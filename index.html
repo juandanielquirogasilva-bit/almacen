@@ -127,6 +127,13 @@ tr.det td{background:var(--soft);font-size:13.5px;color:var(--mut);white-space:n
 .tag.o{background:var(--okbg);color:var(--ok);border-color:var(--okline)}
 .vacio{color:var(--mut);padding:40px 18px;text-align:center;white-space:normal}
 
+/* ---------- Selector Salidas / Entradas ---------- */
+.seg{display:inline-flex;gap:3px;padding:3px;margin-bottom:18px;background:var(--card);border:1px solid var(--line);border-radius:10px}
+.seg button{border:0;background:transparent;color:var(--mut);border-radius:7px;padding:0 22px;min-height:38px;font-weight:600;font-size:14px;transition:background .15s,color .15s}
+.seg button:hover{color:var(--ink)}
+.seg button.on{background:var(--ac);color:var(--onac)}
+.seg button:focus-visible{outline:0;box-shadow:var(--ring)}
+
 /* ---------- Formularios ---------- */
 .form-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
 .form-actions{display:flex;justify-content:flex-end;margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}
@@ -191,6 +198,8 @@ tr.det td{background:var(--soft);font-size:13.5px;color:var(--mut);white-space:n
   .card-head{flex-direction:column;align-items:stretch;gap:12px;padding:16px}
   .card-head .search{width:100%}
   .card-foot{padding:12px 16px}
+  .seg{display:flex}
+  .seg button{flex:1;padding:0 10px}
 
   /* Stock como tarjetas */
   #t-stock thead{display:none}
@@ -209,9 +218,9 @@ tr.det td{background:var(--soft);font-size:13.5px;color:var(--mut);white-space:n
   #stock-body tr.det{display:block}
   #stock-body tr.det td{display:block;padding:12px 16px 14px 20px;border-bottom:1px solid var(--line)}
 
-  /* Historial como tarjetas */
+  /* Historial de salidas como tarjetas */
   #t-historial thead{display:none}
-  #t-historial table,#h-body{display:block}
+  #t-historial table,#h-body,#he-body{display:block}
   #h-body tr{display:grid;grid-template-columns:1fr auto;grid-template-areas:"prod bol" "dest kg" "fecha fecha" "pal pal" "obs obs";gap:4px 14px;padding:15px 16px;border-bottom:1px solid var(--line)}
   #h-body td{padding:0;border:0;white-space:normal;font-size:13.5px;color:var(--mut)}
   #h-body td:empty{display:none}
@@ -232,6 +241,23 @@ tr.det td{background:var(--soft);font-size:13.5px;color:var(--mut);white-space:n
   #h-body tr:has(td.vacio){display:block}
   #stock-body tr:not(.prod):not(.det){display:block}
 
+  /* Historial de entradas como tarjetas */
+  #he-body tr{display:grid;grid-template-columns:1fr auto;grid-template-areas:"prod bol" "tipo kg" "fecha fecha" "pal pal";gap:4px 14px;padding:15px 16px;border-bottom:1px solid var(--line)}
+  #he-body td{padding:0;border:0;white-space:normal;font-size:13.5px;color:var(--mut)}
+  #he-body td:empty{display:none}
+  #he-body td:nth-child(1){grid-area:fecha;font-size:12.5px;margin-top:4px}
+  #he-body td:nth-child(2){grid-area:tipo}
+  #he-body td:nth-child(3){grid-area:prod;color:var(--ink);font-weight:600;font-size:15px}
+  #he-body td:nth-child(4){grid-area:pal;font-size:12.5px}
+  #he-body td:nth-child(4)::before{content:"Pallet: "}
+  #he-body td:nth-child(5){grid-area:bol;text-align:right;color:var(--ink);font-weight:600}
+  #he-body td:nth-child(5)::after{content:" bolsas"}
+  #he-body td:nth-child(6){grid-area:kg;text-align:right}
+  #he-body td:nth-child(6)::after{content:" kg"}
+  #he-body td.vacio{grid-area:auto;grid-column:1/-1;text-align:center;padding:30px 0;font-size:14px}
+  #he-body td.vacio::before,#he-body td.vacio::after{content:none}
+  #he-body tr:has(td.vacio){display:block}
+
   /* Login */
   #login{grid-template-columns:1fr}
   .l-hero{padding:28px 22px;gap:18px}
@@ -249,7 +275,7 @@ tr.det td{background:var(--soft);font-size:13.5px;color:var(--mut);white-space:n
     <div class="brand"><div class="mark">A</div><div><b>Almacén</b><small>Control de inventario</small></div></div>
     <div>
       <h2>Control de inventario claro y en tiempo real</h2>
-      <p>Consulta existencias, registra movimientos y revisa el historial de salidas desde cualquier dispositivo.</p>
+      <p>Consulta existencias, registra movimientos y revisa el historial de entradas y salidas desde cualquier dispositivo.</p>
       <ul class="l-points">
         <li><b>Existencias por producto y lote</b>Kilos, bolsas y alertas de stock mínimo.</li>
         <li><b>Entradas y salidas registradas</b>Cada movimiento queda con fecha, hora y destino.</li>
@@ -374,18 +400,38 @@ tr.det td{background:var(--soft);font-size:13.5px;color:var(--mut);white-space:n
       <section id="t-historial" class="hide">
         <div class="page-head">
           <div class="eyebrow">Movimientos</div>
-          <h2>Historial de salidas</h2>
-          <p class="sub">Consulta las salidas registradas y filtra por destino o fechas.</p>
+          <h2 id="h-title">Historial de salidas</h2>
+          <p class="sub" id="h-sub">Consulta las salidas registradas y filtra por destino o fechas.</p>
         </div>
-        <div class="card pad" style="margin-bottom:18px">
-          <div class="grid three">
-            <div><label>Destino</label><select id="h-area"><option value="">Todos</option></select></div>
-            <div><label>Desde</label><input id="h-desde" type="date"></div>
-            <div><label>Hasta</label><input id="h-hasta" type="date"></div>
+        <div class="seg" id="hseg">
+          <button data-h="salidas" class="on">Salidas</button>
+          <button data-h="entradas">Entradas</button>
+        </div>
+
+        <div id="h-salidas">
+          <div class="card pad" style="margin-bottom:18px">
+            <div class="grid three">
+              <div><label>Destino</label><select id="h-area"><option value="">Todos</option></select></div>
+              <div><label>Desde</label><input id="h-desde" type="date"></div>
+              <div><label>Hasta</label><input id="h-hasta" type="date"></div>
+            </div>
+          </div>
+          <div class="card flush">
+            <div class="wrap"><table><thead><tr><th>Fecha y hora</th><th>Destino</th><th>Producto</th><th>Pallet</th><th class="n">Bolsas</th><th class="n">Kg</th><th>Observación</th></tr></thead><tbody id="h-body"></tbody></table></div>
           </div>
         </div>
-        <div class="card flush">
-          <div class="wrap"><table><thead><tr><th>Fecha y hora</th><th>Destino</th><th>Producto</th><th>Pallet</th><th class="n">Bolsas</th><th class="n">Kg</th><th>Observación</th></tr></thead><tbody id="h-body"></tbody></table></div>
+
+        <div id="h-entradas" class="hide">
+          <div class="card pad" style="margin-bottom:18px">
+            <div class="grid three">
+              <div><label>Tipo</label><select id="he-tipo"><option value="">Todos</option><option value="entrada">Mercadería recibida</option><option value="saldo">Saldos iniciales</option></select></div>
+              <div><label>Desde</label><input id="he-desde" type="date"></div>
+              <div><label>Hasta</label><input id="he-hasta" type="date"></div>
+            </div>
+          </div>
+          <div class="card flush">
+            <div class="wrap"><table><thead><tr><th>Fecha y hora</th><th>Tipo</th><th>Producto</th><th>Pallet</th><th class="n">Bolsas</th><th class="n">Kg</th></tr></thead><tbody id="he-body"></tbody></table></div>
+          </div>
         </div>
       </section>
     </main>
@@ -448,7 +494,7 @@ async function cargar() {
     db.from("stock_lotes").select("*").gt("bolsas_restantes", 0).order("fecha_ingreso")
   ]);
   productos = p.data || []; stock = s.data || []; lotes = l.data || [];
-  pintarStock(); llenarProductos(); pintarLotes(); cargarHistorial();
+  pintarStock(); llenarProductos(); pintarLotes(); cargarHistorial(); cargarEntradas();
 }
 
 function pintarStock() {
@@ -523,6 +569,31 @@ async function cargarHistorial() {
     : '<tr><td colspan="7" class="vacio">No hay salidas con ese filtro.</td></tr>';
 }
 ["h-area", "h-desde", "h-hasta"].forEach(id => $(id).onchange = cargarHistorial);
+
+/* ---------- Historial de entradas ---------- */
+const esSaldo = r => /^SALDO/i.test(r.codigo_pallet || "");
+
+async function cargarEntradas() {
+  const { data, error } = await db.from("lotes")
+    .select("id,fecha_ingreso,codigo_pallet,kg_por_bolsa,bolsas_iniciales,productos(nombre)")
+    .order("fecha_ingreso", { ascending: false }).order("id", { ascending: false }).limit(1000);
+  if (error) { $("he-body").innerHTML = `<tr><td colspan="6" class="vacio">No se pudo cargar: ${esc(error.message)}</td></tr>`; return; }
+  const t = $("he-tipo").value, d = $("he-desde").value, h = $("he-hasta").value;
+  const filas = (data || []).filter(r => (!t || (t === "saldo") === esSaldo(r)) && (!d || diaBO(r.fecha_ingreso) >= d) && (!h || diaBO(r.fecha_ingreso) <= h));
+  $("he-body").innerHTML = filas.length ? filas.map(r => `<tr><td>${fh(r.fecha_ingreso)}</td><td>${esSaldo(r) ? '<span style="color:var(--mut)">Saldo inicial</span>' : '<span class="tag o">Entrada</span>'}</td><td>${esc(r.productos?.nombre)}</td><td>${esc(r.codigo_pallet)}</td><td class="n">${num(r.bolsas_iniciales, 0)}</td><td class="n">${num(r.bolsas_iniciales * r.kg_por_bolsa)}</td></tr>`).join("")
+    : '<tr><td colspan="6" class="vacio">No hay entradas con ese filtro.</td></tr>';
+}
+["he-tipo", "he-desde", "he-hasta"].forEach(id => $(id).onchange = cargarEntradas);
+
+$("hseg").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const ent = b.dataset.h === "entradas";
+  document.querySelectorAll("#hseg button").forEach(x => x.classList.toggle("on", x === b));
+  $("h-salidas").classList.toggle("hide", ent);
+  $("h-entradas").classList.toggle("hide", !ent);
+  $("h-title").textContent = ent ? "Historial de entradas" : "Historial de salidas";
+  $("h-sub").textContent = ent ? "Consulta los pallets ingresados y los saldos iniciales, y filtra por tipo o fechas." : "Consulta las salidas registradas y filtra por destino o fechas.";
+};
 
 $("tabs").onclick = e => {
   const b = e.target.closest("button"); if (!b) return;
