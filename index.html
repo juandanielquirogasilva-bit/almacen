@@ -490,7 +490,7 @@ async function iniciar(session) {
 async function cargar() {
   const [p, s, l] = await Promise.all([
     db.from("productos").select("codigo,nombre,tipo").order("codigo"),
-    db.from("stock_productos").select("*").order("codigo"),
+    db.from("stock_productos").select("*").order("codigo").order("kg_por_bolsa", { ascending: false }),
     db.from("stock_lotes").select("*").gt("bolsas_restantes", 0).order("fecha_ingreso")
   ]);
   productos = p.data || []; stock = s.data || []; lotes = l.data || [];
@@ -499,16 +499,19 @@ async function cargar() {
 
 function pintarStock() {
   const q = $("busca").value.trim().toLowerCase();
-  const filas = stock.filter(r => !q || r.nombre.toLowerCase().includes(q) || r.codigo.toLowerCase().includes(q));
-  $("r-total").textContent = stock.length;
-  $("r-bajos").textContent = stock.filter(r => r.stock_bajo && Number(r.stock_minimo_kg) > 0).length;
+  const vacia = r => r.kg_por_bolsa != null && Number(r.bolsas_total) === 0 && stock.some(x => x.codigo === r.codigo && x !== r && Number(x.bolsas_total) > 0);
+  const filas = stock.filter(r => !vacia(r) && (!q || r.nombre.toLowerCase().includes(q) || r.codigo.toLowerCase().includes(q)));
+  $("r-total").textContent = new Set(stock.map(r => r.codigo)).size;
+  $("r-bajos").textContent = new Set(stock.filter(r => r.stock_bajo && Number(r.stock_minimo_kg) > 0).map(r => r.codigo)).size;
   if (!filas.length) { $("stock-body").innerHTML = '<tr><td colspan="6" class="vacio">No hay productos que coincidan.</td></tr>'; return; }
   $("stock-body").innerHTML = filas.map(r => {
     const bajo = r.stock_bajo && Number(r.stock_minimo_kg) > 0;
     const sin = Number(r.stock_minimo_kg) === 0;
-    let h = `<tr class="prod ${bajo ? "bajo" : ""}" data-c="${esc(r.codigo)}"><td>${esc(r.tipo === "terminado" ? "" : r.codigo)}</td><td>${esc(r.nombre)}</td><td class="n">${num(r.kg_total)}</td><td class="n">${num(r.bolsas_total, 0)}</td><td class="n">${num(r.stock_minimo_kg)}</td><td>${bajo ? '<span class="tag b">Stock bajo</span>' : sin ? '<span style="color:var(--mut)">Sin mínimo</span>' : '<span class="tag o">Normal</span>'}</td></tr>`;
-    if (abiertos.has(r.codigo)) {
-      const ls = lotes.filter(x => x.producto_codigo === r.codigo);
+    const key = r.codigo + "|" + (r.kg_por_bolsa ?? "");
+    const pres = r.kg_por_bolsa != null ? ` <span style="color:var(--mut);font-weight:400">· ${num(r.kg_por_bolsa, 3)} kg</span>` : "";
+    let h = `<tr class="prod ${bajo ? "bajo" : ""}" data-c="${esc(key)}"><td>${esc(r.tipo === "terminado" ? "" : r.codigo)}</td><td>${esc(r.nombre)}${pres}</td><td class="n">${num(r.kg_total)}</td><td class="n">${num(r.bolsas_total, 0)}</td><td class="n">${num(r.stock_minimo_kg)}</td><td>${bajo ? '<span class="tag b">Stock bajo</span>' : sin ? '<span style="color:var(--mut)">Sin mínimo</span>' : '<span class="tag o">Normal</span>'}</td></tr>`;
+    if (abiertos.has(key)) {
+      const ls = lotes.filter(x => x.producto_codigo === r.codigo && (r.kg_por_bolsa == null || Number(x.kg_por_bolsa) === Number(r.kg_por_bolsa)));
       h += `<tr class="det"><td colspan="6">${ls.length ? ls.map(x => `${esc(x.codigo_pallet || "s/c")}: ${num(x.bolsas_restantes, 0)} bolsas de ${num(x.kg_por_bolsa, 3)} kg = ${num(x.kg_restantes)} kg (ingreso ${fh(x.fecha_ingreso)})`).join("<br>") : "Sin lotes con stock."}</td></tr>`;
     }
     return h;
