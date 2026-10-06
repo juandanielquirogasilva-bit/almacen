@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="es" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Almacén</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --bg:#f4f6f8;--card:#fff;--ink:#111c26;--mut:#5b6977;--line:#e2e7ec;--soft:#f0f3f6;
+  --ac:#0e5a6b;--ach:#0a4757;--acbg:#e2f0f3;--onac:#fff;
+  --side:#0d1b26;--sideink:#b6c3cf;--sidemut:#6b8092;
+  --red:#b42318;--redbg:#fef0ee;--redline:#f6c9c4;
+  --ok:#067647;--okbg:#e8f6ee;--okline:#b7e3c9;
+  --sh:0 1px 2px rgba(16,32,44,.05),0 6px 20px rgba(16,32,44,.04);
+  --ring:0 0 0 3px rgba(14,90,107,.18);
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#0a1219;--card:#121c25;--ink:#e8eef3;--mut:#8fa0ae;--line:#233240;--soft:#182430;
+  --ac:#4db3c7;--ach:#76c8d8;--acbg:#13313a;--onac:#04141a;
+  --side:#070e14;
+  --red:#ff8a7d;--redbg:#2c1918;--redline:#5a2c29;
+  --ok:#5fd09a;--okbg:#122a1e;--okline:#1f4d36;
+  --sh:none;--ring:0 0 0 3px rgba(77,179,199,.25);
+}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+h1,h2,h3,p{margin:0}
+
+/* ---------- Botones ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;background:var(--ac);color:var(--onac);border:1px solid var(--ac);border-radius:8px;padding:0 22px;min-height:44px;font-weight:600;letter-spacing:.01em;transition:background .15s,box-shadow .15s,transform .05s}
+.btn:hover{background:var(--ach);border-color:var(--ach)}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible{outline:0;box-shadow:var(--ring)}
+.btn.sec{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.sec:hover{background:var(--soft);border-color:var(--mut)}
+.btn.sm{min-height:36px;padding:0 16px;font-size:14px}
+
+/* ---------- Campos ---------- */
+label{display:block;font-size:12.5px;font-weight:600;color:var(--mut);margin-bottom:6px;letter-spacing:.02em}
+input,select,textarea{width:100%;min-height:44px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:16px;transition:border-color .15s,box-shadow .15s}
+input::placeholder{color:#9aa7b2}
+input:hover,select:hover{border-color:#b8c3cc}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--ac);box-shadow:var(--ring)}
+select{appearance:none;-webkit-appearance:none;padding-right:36px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),linear-gradient(135deg,var(--mut) 50%,transparent 50%);
+  background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.full{grid-column:1/-1}
+
+/* ---------- Estructura ---------- */
+#app{display:grid;grid-template-columns:252px minmax(0,1fr);min-height:100vh}
+.side{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:26px 14px 20px;background:var(--side);color:var(--sideink)}
+.brand{display:flex;align-items:center;gap:12px;padding:0 10px 22px;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,.08)}
+.mark{flex:none;width:38px;height:38px;border-radius:10px;background:linear-gradient(145deg,#2aa1b8,#0e5a6b);color:#fff;font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+.brand b{display:block;color:#fff;font-size:16px;line-height:1.2;letter-spacing:.01em}
+.brand small{display:block;font-size:11.5px;color:var(--sidemut);margin-top:1px}
+.side-label{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--sidemut);padding:0 14px 10px}
+nav{display:flex;flex-direction:column;gap:3px}
+nav button{position:relative;text-align:left;background:transparent;border:0;border-radius:8px;padding:11px 14px;color:var(--sideink);font-weight:500;font-size:14.5px;transition:background .15s,color .15s}
+nav button:hover{background:rgba(255,255,255,.06);color:#fff}
+nav button.on{background:rgba(255,255,255,.1);color:#fff;font-weight:600}
+nav button.on::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:#4db3c7}
+.side-foot{margin-top:auto;padding:16px 14px 0;border-top:1px solid rgba(255,255,255,.08);font-size:12px;line-height:1.5;color:var(--sidemut)}
+
+.content{min-width:0;display:flex;flex-direction:column}
+header.top{position:sticky;top:0;z-index:15;display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 36px;padding-top:calc(12px + env(safe-area-inset-top,0px));background:var(--card);border-bottom:1px solid var(--line)}
+.crumb{font-size:13px;color:var(--mut)}
+.crumb b{color:var(--ink);font-weight:600}
+.brand-m{display:none;align-items:center;gap:10px;font-weight:700}
+.brand-m .mark{width:30px;height:30px;font-size:15px;border-radius:8px}
+.user{display:flex;align-items:center;gap:14px;min-width:0}
+.user span{font-size:13px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px}
+
+main{width:100%;max-width:1120px;padding:32px 36px 56px}
+.page-head{margin-bottom:22px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ac)}
+h2{font-size:26px;line-height:1.2;letter-spacing:-.015em;margin:5px 0 6px}
+.sub{color:var(--mut);font-size:14.5px;max-width:560px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh)}
+.card.pad{padding:26px}
+.card.flush{overflow:hidden}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:18px 22px;border-bottom:1px solid var(--line)}
+.card-head h3{font-size:16px;font-weight:700}
+.card-head .search{width:340px;max-width:100%}
+.card-foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px 24px;padding:14px 22px;border-top:1px solid var(--line);background:var(--soft);font-size:13px;color:var(--mut)}
+.legend{display:flex;gap:18px;flex-wrap:wrap}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+
+/* ---------- Resumen ---------- */
+.resumen{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:18px}
+.stat{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px 18px;box-shadow:var(--sh);overflow:hidden}
+.stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--ac)}
+.stat.al::before{background:var(--red)}
+.stat .lbl{display:block;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+.stat b{display:block;font-size:38px;line-height:1.15;font-weight:700;letter-spacing:-.02em;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+.stat.al b{color:var(--red)}
+.stat small{color:var(--mut);font-size:13px}
+
+/* ---------- Tablas ---------- */
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:14px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{padding-left:22px}
+th:last-child,td:last-child{padding-right:22px}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-weight:700;background:var(--soft)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr:last-child td{border-bottom:0}
+tr.prod{cursor:pointer;transition:background .12s}
+tr.prod:hover td{background:var(--soft)}
+tr.prod td:nth-child(2){font-weight:600}
+tr.prod td:nth-child(2)::before{content:"";display:inline-block;width:6px;height:6px;margin:0 12px 1px 2px;border-right:2px solid var(--mut);border-bottom:2px solid var(--mut);transform:rotate(-45deg);transition:transform .15s}
+tr.prod:has(+ tr.det) td:nth-child(2)::before{transform:rotate(45deg)}
+tr.bajo td{background:var(--redbg)}
+tr.bajo:hover td{background:var(--redbg)}
+tr.bajo td:first-child{box-shadow:inset 4px 0 0 var(--red)}
+tr.bajo td:nth-child(3),tr.bajo td:nth-child(4){color:var(--red);font-weight:700}
+tr.det td{background:var(--soft);font-size:13.5px;color:var(--mut);white-space:normal;line-height:1.9;padding:14px 22px 16px 52px;box-shadow:inset 3px 0 0 var(--ac)}
+.tag{display:inline-flex;align-items:center;padding:3px 11px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid transparent}
+.tag::before{content:"";width:6px;height:6px;border-radius:50%;margin-right:7px;background:currentColor}
+.tag.b{background:var(--redbg);color:var(--red);border-color:var(--redline)}
+.tag.o{background:var(--okbg);color:var(--ok);border-color:var(--okline)}
+.vacio{color:var(--mut);padding:40px 18px;text-align:center;white-space:normal}
+
+/* ---------- Formularios ---------- */
+.form-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+.form-actions{display:flex;justify-content:flex-end;margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}
+.note{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:20px 22px}
+.note h3{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:12px}
+.note ul{margin:0;padding:0;list-style:none;display:grid;gap:12px;font-size:13.5px;color:var(--mut)}
+.note li{padding-left:14px;border-left:2px solid var(--ac)}
+.note li b{display:block;color:var(--ink);font-weight:600;font-size:14px}
+.msg{display:none;padding:12px 16px;border-radius:8px;margin-top:18px;font-size:14px;font-weight:500;border:1px solid transparent}
+.msg.ok{display:block;background:var(--okbg);border-color:var(--okline);color:var(--ok)}
+.msg.err{display:block;background:var(--redbg);border-color:var(--redline);color:var(--red)}
+.hide{display:none!important}
+
+/* ---------- Inicio de sesión ---------- */
+#login{min-height:100vh;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}
+.l-hero{position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;gap:40px;padding:56px;color:#fff;background:linear-gradient(155deg,#0d1b26 0%,#0e4a59 100%)}
+.l-hero::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 1px,transparent 1px 22px);pointer-events:none}
+.l-hero>*{position:relative;z-index:1}
+.l-hero .brand{border:0;padding:0;margin:0}
+.l-hero h2{font-size:36px;line-height:1.15;color:#fff;max-width:440px;margin:0 0 14px}
+.l-hero p{color:#b6c9d4;max-width:440px}
+.l-points{list-style:none;margin:30px 0 0;padding:0;display:grid;gap:16px}
+.l-points li{padding-left:16px;border-left:2px solid #4db3c7;color:#b6c9d4;font-size:14px}
+.l-points b{display:block;color:#fff;font-size:15px;font-weight:600}
+.l-copy{font-size:12px;color:#7f98a8}
+.l-form{display:flex;align-items:center;justify-content:center;padding:40px 24px;background:var(--bg)}
+.l-card{width:100%;max-width:400px;padding:34px}
+.l-card h1{font-size:24px;letter-spacing:-.01em;margin-bottom:6px}
+.l-card .sub{margin-bottom:26px}
+.field+.field{margin-top:16px}
+.l-card .btn{width:100%;margin-top:24px;min-height:48px}
+
+/* ---------- Tablet ---------- */
+@media(max-width:1000px){
+  .form-layout{grid-template-columns:1fr}
+  .grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ---------- Móvil ---------- */
+@media(max-width:860px){
+  #app{grid-template-columns:1fr}
+  .side{position:fixed;top:auto;left:0;right:0;bottom:0;z-index:30;height:auto;flex-direction:row;padding:0 0 env(safe-area-inset-bottom,0px);border-top:1px solid rgba(255,255,255,.12)}
+  .side .brand,.side-label,.side-foot{display:none}
+  nav{flex-direction:row;width:100%;gap:0}
+  nav button{flex:1;text-align:center;border-radius:0;padding:16px 4px 15px;font-size:13.5px}
+  nav button.on{background:rgba(255,255,255,.07)}
+  nav button.on::before{left:22%;right:22%;top:0;bottom:auto;width:auto;height:3px;border-radius:0 0 3px 3px}
+
+  header.top{padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top,0px))}
+  .crumb{display:none}
+  .brand-m{display:flex}
+  .user{gap:10px}
+  .user span{max-width:120px;font-size:12px}
+  main{padding:20px 14px calc(92px + env(safe-area-inset-bottom,0px))}
+  h2{font-size:22px}
+  .card.pad{padding:18px}
+  .grid,.grid.three{grid-template-columns:1fr;gap:16px}
+  .form-actions .btn{width:100%}
+  .resumen{gap:12px}
+  .stat{padding:16px 16px 14px}
+  .stat b{font-size:30px}
+  .card-head{flex-direction:column;align-items:stretch;gap:12px;padding:16px}
+  .card-head .search{width:100%}
+  .card-foot{padding:12px 16px}
+
+  /* Stock como tarjetas */
+  #t-stock thead{display:none}
+  #t-stock table,#t-stock tbody{display:block}
+  #stock-body tr.prod{display:grid;grid-template-columns:auto auto 1fr;grid-template-areas:"name name est" "kg bol bol";gap:8px 16px;align-items:center;padding:15px 16px;border-bottom:1px solid var(--line)}
+  #stock-body tr.prod td{padding:0;border:0;background:transparent!important;box-shadow:none!important;white-space:normal;text-align:left}
+  #stock-body tr.prod td:nth-child(1),#stock-body tr.prod td:nth-child(5){display:none}
+  #stock-body tr.prod td:nth-child(2){grid-area:name}
+  #stock-body tr.prod td:nth-child(3){grid-area:kg;font-size:13.5px;color:var(--mut)}
+  #stock-body tr.prod td:nth-child(4){grid-area:bol;font-size:13.5px;color:var(--mut)}
+  #stock-body tr.prod td:nth-child(6){grid-area:est;justify-self:end}
+  #stock-body tr.prod td:nth-child(3)::after{content:" kg"}
+  #stock-body tr.prod td:nth-child(4)::after{content:" bolsas"}
+  #stock-body tr.bajo{background:var(--redbg);box-shadow:inset 4px 0 0 var(--red)}
+  #stock-body tr.bajo td:nth-child(3),#stock-body tr.bajo td:nth-child(4){color:var(--red)}
+  #stock-body tr.det{display:block}
+  #stock-body tr.det td{display:block;padding:12px 16px 14px 20px;border-bottom:1px solid var(--line)}
+
+  /* Historial como tarjetas */
+  #t-historial thead{display:none}
+  #t-historial table,#h-body{display:block}
+  #h-body tr{display:grid;grid-template-columns:1fr auto;grid-template-areas:"prod bol" "dest kg" "fecha fecha" "pal pal" "obs obs";gap:4px 14px;padding:15px 16px;border-bottom:1px solid var(--line)}
+  #h-body td{padding:0;border:0;white-space:normal;font-size:13.5px;color:var(--mut)}
+  #h-body td:empty{display:none}
+  #h-body td:nth-child(1){grid-area:fecha;font-size:12.5px;margin-top:4px}
+  #h-body td:nth-child(2){grid-area:dest}
+  #h-body td:nth-child(2)::before{content:"Destino: "}
+  #h-body td:nth-child(3){grid-area:prod;color:var(--ink);font-weight:600;font-size:15px}
+  #h-body td:nth-child(4){grid-area:pal;font-size:12.5px}
+  #h-body td:nth-child(4)::before{content:"Pallet: "}
+  #h-body td:nth-child(5){grid-area:bol;text-align:right;color:var(--ink);font-weight:600}
+  #h-body td:nth-child(5)::after{content:" bolsas"}
+  #h-body td:nth-child(6){grid-area:kg;text-align:right}
+  #h-body td:nth-child(6)::after{content:" kg"}
+  #h-body td:nth-child(7){grid-area:obs;font-size:12.5px}
+  #h-body td:nth-child(7)::before{content:"Obs.: "}
+  #h-body td.vacio{grid-area:auto;grid-column:1/-1;text-align:center;padding:30px 0;font-size:14px}
+  #h-body td.vacio::before,#h-body td.vacio::after{content:none}
+  #h-body tr:has(td.vacio){display:block}
+  #stock-body tr:not(.prod):not(.det){display:block}
+
+  /* Login */
+  #login{grid-template-columns:1fr}
+  .l-hero{padding:28px 22px;gap:18px}
+  .l-hero h2{font-size:24px;margin-bottom:8px}
+  .l-points,.l-copy{display:none}
+  .l-form{align-items:flex-start;padding:26px 18px 40px}
+  .l-card{padding:24px 20px}
+}
+</style>
+</head>
+<body>
+
+<div id="login" class="hide">
+  <div class="l-hero">
+    <div class="brand"><div class="mark">A</div><div><b>Almacén</b><small>Control de inventario</small></div></div>
+    <div>
+      <h2>Control de inventario claro y en tiempo real</h2>
+      <p>Consulta existencias, registra movimientos y revisa el historial de salidas desde cualquier dispositivo.</p>
+      <ul class="l-points">
+        <li><b>Existencias por producto y lote</b>Kilos, bolsas y alertas de stock mínimo.</li>
+        <li><b>Entradas y salidas registradas</b>Cada movimiento queda con fecha, hora y destino.</li>
+        <li><b>Historial filtrable</b>Busca por destino y por rango de fechas.</li>
+      </ul>
+    </div>
+    <div class="l-copy">Acceso restringido a personal autorizado.</div>
+  </div>
+  <div class="l-form">
+    <div class="card l-card">
+      <h1>Iniciar sesión</h1>
+      <p class="sub">Ingresa con tu correo y contraseña.</p>
+      <div class="field"><label>Correo</label><input id="lemail" type="email" autocomplete="username" placeholder="nombre@empresa.com"></div>
+      <div class="field"><label>Contraseña</label><input id="lpass" type="password" autocomplete="current-password" placeholder="Tu contraseña"></div>
+      <button class="btn" onclick="entrar()">Entrar</button>
+      <div id="lmsg" class="msg"></div>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="hide">
+  <aside class="side">
+    <div class="brand"><div class="mark">A</div><div><b>Almacén</b><small>Control de inventario</small></div></div>
+    <div class="side-label">Menú</div>
+    <nav id="tabs">
+      <button data-t="stock" class="on">Stock</button>
+      <button data-t="entrada" class="solo-juan">Registrar entrada</button>
+      <button data-t="salida" class="solo-juan">Registrar salida</button>
+      <button data-t="historial">Historial</button>
+    </nav>
+    <div class="side-foot">Los datos se actualizan automáticamente cuando cualquier usuario registra un movimiento.</div>
+  </aside>
+
+  <div class="content">
+    <header class="top">
+      <div class="crumb">Control de inventario &nbsp;/&nbsp; <b>Almacén</b></div>
+      <div class="brand-m"><div class="mark">A</div>Almacén</div>
+      <div class="user"><span id="quien"></span> <button class="btn sec sm" onclick="salir()">Cerrar sesión</button></div>
+    </header>
+
+    <main>
+      <section id="t-stock">
+        <div class="page-head">
+          <div class="eyebrow">Inventario</div>
+          <h2>Existencias</h2>
+          <p class="sub">Estado actual del almacén por producto, con alertas cuando el stock cae por debajo del mínimo.</p>
+        </div>
+        <div class="resumen">
+          <div class="stat"><span class="lbl">Productos</span><b id="r-total">0</b><small>Registrados en el inventario</small></div>
+          <div class="stat al"><span class="lbl">Stock bajo</span><b id="r-bajos">0</b><small>Por debajo del mínimo definido</small></div>
+        </div>
+        <div class="card flush">
+          <div class="card-head">
+            <h3>Inventario actual</h3>
+            <div class="search"><input id="busca" placeholder="Buscar por producto o código"></div>
+          </div>
+          <div class="wrap"><table><thead><tr><th>Código</th><th>Producto</th><th class="n">Kg</th><th class="n">Bolsas</th><th class="n">Mínimo (kg)</th><th>Estado</th></tr></thead><tbody id="stock-body"></tbody></table></div>
+          <div class="card-foot">
+            <span>Selecciona un producto para ver el detalle de sus lotes.</span>
+            <span class="legend"><span><i style="background:var(--ok)"></i>Normal</span><span><i style="background:var(--red)"></i>Stock bajo</span></span>
+          </div>
+        </div>
+      </section>
+
+      <section id="t-entrada" class="hide">
+        <div class="page-head">
+          <div class="eyebrow">Movimientos</div>
+          <h2>Registrar entrada de pallet</h2>
+          <p class="sub">Registra la mercadería que ingresa al almacén.</p>
+        </div>
+        <div class="form-layout">
+          <div class="card pad">
+            <div class="grid">
+              <div class="full"><label>Producto</label><select id="e-prod"></select></div>
+              <div class="full"><label>Código del pallet</label><input id="e-pallet" placeholder="Ej. P-0001"></div>
+              <div><label>Kg por bolsa</label><input id="e-kg" type="number" inputmode="decimal" step="any" min="0.001" value="25"></div>
+              <div><label>Bolsas</label><input id="e-bolsas" type="number" inputmode="numeric" step="1" min="1" placeholder="Cantidad"></div>
+            </div>
+            <div class="form-actions"><button class="btn" onclick="registrarEntrada()">Guardar entrada</button></div>
+            <div id="e-msg" class="msg"></div>
+          </div>
+          <div class="note">
+            <h3>Antes de guardar</h3>
+            <ul>
+              <li><b>Verifica el producto</b>Debe coincidir con el pallet recibido.</li>
+              <li><b>Confirma las cantidades</b>Kg por bolsa y número de bolsas.</li>
+              <li><b>Actualización inmediata</b>El stock se refleja para todos los usuarios.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="t-salida" class="hide">
+        <div class="page-head">
+          <div class="eyebrow">Movimientos</div>
+          <h2>Registrar salida</h2>
+          <p class="sub">Descuenta mercadería de un lote y asígnala a un destino.</p>
+        </div>
+        <div class="form-layout">
+          <div class="card pad">
+            <div class="grid">
+              <div class="full"><label>Producto</label><select id="s-prod"></select></div>
+              <div class="full"><label>Lote</label><select id="s-lote"></select></div>
+              <div><label>Destino</label><select id="s-area"></select></div>
+              <div><label>Bolsas que salen</label><input id="s-bolsas" type="number" inputmode="numeric" step="1" min="1" placeholder="Cantidad"></div>
+              <div class="full"><label>Observación (opcional)</label><input id="s-obs" placeholder="Detalle adicional de la salida"></div>
+            </div>
+            <div class="form-actions"><button class="btn" onclick="registrarSalida()">Guardar salida</button></div>
+            <div id="s-msg" class="msg"></div>
+          </div>
+          <div class="note">
+            <h3>Antes de guardar</h3>
+            <ul>
+              <li><b>Elige el lote correcto</b>Se indica cuántas bolsas quedan en cada uno.</li>
+              <li><b>Define el destino</b>Permite filtrar luego en el historial.</li>
+              <li><b>Queda registrado</b>Cada salida guarda fecha y hora.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="t-historial" class="hide">
+        <div class="page-head">
+          <div class="eyebrow">Movimientos</div>
+          <h2>Historial de salidas</h2>
+          <p class="sub">Consulta las salidas registradas y filtra por destino o fechas.</p>
+        </div>
+        <div class="card pad" style="margin-bottom:18px">
+          <div class="grid three">
+            <div><label>Destino</label><select id="h-area"><option value="">Todos</option></select></div>
+            <div><label>Desde</label><input id="h-desde" type="date"></div>
+            <div><label>Hasta</label><input id="h-hasta" type="date"></div>
+          </div>
+        </div>
+        <div class="card flush">
+          <div class="wrap"><table><thead><tr><th>Fecha y hora</th><th>Destino</th><th>Producto</th><th>Pallet</th><th class="n">Bolsas</th><th class="n">Kg</th><th>Observación</th></tr></thead><tbody id="h-body"></tbody></table></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://swejpbxzriazezoqnnbf.supabase.co";
+const SUPABASE_KEY = "sb_publishable_VjERUBiv3wf8m3W229GYZQ_bIxb1-Qv";
+const JUAN_UID = "3a8bfc96-ad0d-420a-932e-4241d0af9567";
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = (n, d = 2) => Number(n).toLocaleString("es-BO", {maximumFractionDigits: d});
+const fh = iso => new Date(iso).toLocaleString("es-BO", {timeZone: "America/La_Paz", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"});
+const diaBO = iso => new Date(iso).toLocaleDateString("en-CA", {timeZone: "America/La_Paz"});
+
+let esJuan = false, productos = [], stock = [], lotes = [], areas = [], canal = null, abiertos = new Set();
+
+function aviso(id, texto, ok) { const m = $(id); m.className = "msg " + (ok ? "ok" : "err"); m.textContent = texto; }
+
+async function entrar() {
+  const { error } = await db.auth.signInWithPassword({ email: $("lemail").value.trim(), password: $("lpass").value });
+  if (error) aviso("lmsg", "Correo o contraseña incorrectos.", false);
+}
+async function salir() { await db.auth.signOut(); }
+
+db.auth.onAuthStateChange((_e, session) => { setTimeout(() => iniciar(session), 0); });
+
+let sesionActual = null;
+async function iniciar(session) {
+  const id = session ? session.user.id : "";
+  if (id === sesionActual) return;
+  sesionActual = id;
+  if (!session) {
+    $("app").classList.add("hide"); $("login").classList.remove("hide");
+    if (canal) { db.removeChannel(canal); canal = null; }
+    return;
+  }
+  esJuan = id === JUAN_UID;
+  $("quien").textContent = session.user.email + (esJuan ? "" : " (solo lectura)");
+  document.querySelectorAll(".solo-juan").forEach(b => b.classList.toggle("hide", !esJuan));
+  $("login").classList.add("hide"); $("app").classList.remove("hide");
+  const { data: a } = await db.from("areas").select("*").order("id");
+  areas = a || [];
+  $("s-area").innerHTML = areas.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join("");
+  $("h-area").innerHTML = '<option value="">Todos</option>' + areas.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join("");
+  await cargar();
+  canal = db.channel("cambios")
+    .on("postgres_changes", { event: "*", schema: "public", table: "lotes" }, cargar)
+    .on("postgres_changes", { event: "*", schema: "public", table: "salidas" }, cargar)
+    .subscribe();
+}
+
+async function cargar() {
+  const [p, s, l] = await Promise.all([
+    db.from("productos").select("codigo,nombre,tipo").order("codigo"),
+    db.from("stock_productos").select("*").order("codigo"),
+    db.from("stock_lotes").select("*").gt("bolsas_restantes", 0).order("fecha_ingreso")
+  ]);
+  productos = p.data || []; stock = s.data || []; lotes = l.data || [];
+  pintarStock(); llenarProductos(); pintarLotes(); cargarHistorial();
+}
+
+function pintarStock() {
+  const q = $("busca").value.trim().toLowerCase();
+  const filas = stock.filter(r => !q || r.nombre.toLowerCase().includes(q) || r.codigo.toLowerCase().includes(q));
+  $("r-total").textContent = stock.length;
+  $("r-bajos").textContent = stock.filter(r => r.stock_bajo && Number(r.stock_minimo_kg) > 0).length;
+  if (!filas.length) { $("stock-body").innerHTML = '<tr><td colspan="6" class="vacio">No hay productos que coincidan.</td></tr>'; return; }
+  $("stock-body").innerHTML = filas.map(r => {
+    const bajo = r.stock_bajo && Number(r.stock_minimo_kg) > 0;
+    const sin = Number(r.stock_minimo_kg) === 0;
+    let h = `<tr class="prod ${bajo ? "bajo" : ""}" data-c="${esc(r.codigo)}"><td>${esc(r.tipo === "terminado" ? "" : r.codigo)}</td><td>${esc(r.nombre)}</td><td class="n">${num(r.kg_total)}</td><td class="n">${num(r.bolsas_total, 0)}</td><td class="n">${num(r.stock_minimo_kg)}</td><td>${bajo ? '<span class="tag b">Stock bajo</span>' : sin ? '<span style="color:var(--mut)">Sin mínimo</span>' : '<span class="tag o">Normal</span>'}</td></tr>`;
+    if (abiertos.has(r.codigo)) {
+      const ls = lotes.filter(x => x.producto_codigo === r.codigo);
+      h += `<tr class="det"><td colspan="6">${ls.length ? ls.map(x => `${esc(x.codigo_pallet || "s/c")}: ${num(x.bolsas_restantes, 0)} bolsas de ${num(x.kg_por_bolsa, 3)} kg = ${num(x.kg_restantes)} kg (ingreso ${fh(x.fecha_ingreso)})`).join("<br>") : "Sin lotes con stock."}</td></tr>`;
+    }
+    return h;
+  }).join("");
+}
+$("busca").oninput = pintarStock;
+$("stock-body").onclick = e => {
+  const tr = e.target.closest("tr.prod"); if (!tr) return;
+  const c = tr.dataset.c; abiertos.has(c) ? abiertos.delete(c) : abiertos.add(c); pintarStock();
+};
+
+function llenarProductos() {
+  const op = productos.map(x => `<option value="${esc(x.codigo)}">${esc(x.tipo === "terminado" ? x.nombre : x.codigo + " · " + x.nombre)}</option>`).join("");
+  const e = $("e-prod").value, s = $("s-prod").value;
+  $("e-prod").innerHTML = op; $("s-prod").innerHTML = op;
+  if (e) $("e-prod").value = e; if (s) $("s-prod").value = s;
+}
+function pintarLotes() {
+  const c = $("s-prod").value, prev = $("s-lote").value;
+  const ls = lotes.filter(x => x.producto_codigo === c);
+  $("s-lote").innerHTML = ls.length
+    ? ls.map(x => `<option value="${x.id}">${esc(x.codigo_pallet || "s/c")} — quedan ${num(x.bolsas_restantes, 0)} bolsas de ${num(x.kg_por_bolsa, 3)} kg</option>`).join("")
+    : '<option value="">Sin lotes con stock</option>';
+  if (prev && ls.some(x => String(x.id) === prev)) $("s-lote").value = prev;
+}
+$("s-prod").onchange = pintarLotes;
+
+async function registrarEntrada() {
+  const fila = { producto_codigo: $("e-prod").value, codigo_pallet: $("e-pallet").value.trim() || null, kg_por_bolsa: Number($("e-kg").value), bolsas_iniciales: parseInt($("e-bolsas").value, 10) };
+  if (!(fila.kg_por_bolsa > 0) || !(fila.bolsas_iniciales > 0)) return aviso("e-msg", "Completa kg por bolsa y bolsas con números mayores a 0.", false);
+  const { error } = await db.from("lotes").insert(fila);
+  if (error) return aviso("e-msg", "No se guardó: " + error.message, false);
+  aviso("e-msg", `Entrada guardada: ${fila.bolsas_iniciales} bolsas de ${fila.kg_por_bolsa} kg.`, true);
+  $("e-pallet").value = ""; $("e-bolsas").value = "";
+  cargar();
+}
+
+async function registrarSalida() {
+  const fila = { lote_id: Number($("s-lote").value), area_id: Number($("s-area").value), bolsas: parseInt($("s-bolsas").value, 10), observacion: $("s-obs").value.trim() || null };
+  if (!fila.lote_id) return aviso("s-msg", "Elige un lote con stock.", false);
+  if (!(fila.bolsas > 0)) return aviso("s-msg", "Escribe cuántas bolsas salen (mínimo 1).", false);
+  const { error } = await db.from("salidas").insert(fila);
+  if (error) return aviso("s-msg", "No se guardó: " + error.message, false);
+  const dest = areas.find(a => a.id === fila.area_id)?.nombre || "";
+  aviso("s-msg", `Salida guardada: ${fila.bolsas} bolsas a ${dest}.`, true);
+  $("s-bolsas").value = ""; $("s-obs").value = "";
+  cargar();
+}
+
+async function cargarHistorial() {
+  const { data, error } = await db.from("salidas")
+    .select("id,fecha_hora,bolsas,observacion,area_id,areas(nombre),lotes(codigo_pallet,kg_por_bolsa,productos(nombre))")
+    .order("fecha_hora", { ascending: false }).limit(1000);
+  if (error) { $("h-body").innerHTML = `<tr><td colspan="7" class="vacio">No se pudo cargar: ${esc(error.message)}</td></tr>`; return; }
+  const area = $("h-area").value, d = $("h-desde").value, h = $("h-hasta").value;
+  const filas = (data || []).filter(r => (!area || String(r.area_id) === area) && (!d || diaBO(r.fecha_hora) >= d) && (!h || diaBO(r.fecha_hora) <= h));
+  $("h-body").innerHTML = filas.length ? filas.map(r => `<tr><td>${fh(r.fecha_hora)}</td><td>${esc(r.areas?.nombre)}</td><td>${esc(r.lotes?.productos?.nombre)}</td><td>${esc(r.lotes?.codigo_pallet)}</td><td class="n">${num(r.bolsas, 0)}</td><td class="n">${num(r.bolsas * r.lotes.kg_por_bolsa)}</td><td>${esc(r.observacion)}</td></tr>`).join("")
+    : '<tr><td colspan="7" class="vacio">No hay salidas con ese filtro.</td></tr>';
+}
+["h-area", "h-desde", "h-hasta"].forEach(id => $(id).onchange = cargarHistorial);
+
+$("tabs").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b));
+  ["stock", "entrada", "salida", "historial"].forEach(t => $("t-" + t).classList.toggle("hide", t !== b.dataset.t));
+};
+$("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
+</script>
+</body>
+</html>
