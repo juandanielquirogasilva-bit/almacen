@@ -720,5 +720,69 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   });
 })();
 </script>
+  <!-- ===== BOTÓN PDF DEL INVENTARIO: pegar justo antes de </body> (después de los otros bloques) ===== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script>
+(() => {
+  const cab = document.querySelector("#t-stock .card-head");
+  const busq = cab.querySelector(".search");
+  const caja = document.createElement("div");
+  caja.style.cssText = "display:flex;gap:10px;align-items:center;flex-wrap:wrap";
+  cab.appendChild(caja);
+  caja.appendChild(busq);
+  const btn = document.createElement("button");
+  btn.className = "btn sec sm"; btn.textContent = "Descargar PDF";
+  caja.appendChild(btn);
+
+  btn.onclick = () => {
+    if (!window.jspdf) return alert("No se pudo cargar el generador de PDF. Revisa tu conexión y recarga la página.");
+    const vacia = r => r.kg_por_bolsa != null && Number(r.bolsas_total) === 0 && stock.some(x => x.codigo === r.codigo && x !== r && Number(x.bolsas_total) > 0);
+    const filas = stock.filter(r => !vacia(r));
+    if (!filas.length) return alert("No hay datos de inventario para descargar.");
+    const conPres = filas.some(r => r.kg_por_bolsa != null);
+    const bajo = r => r.stock_bajo && Number(r.stock_minimo_kg) > 0;
+    const estado = r => bajo(r) ? "Stock bajo" : Number(r.stock_minimo_kg) === 0 ? "Sin mínimo" : "Normal";
+
+    const head = ["Código", "Producto"].concat(conPres ? ["Presentación"] : [], ["Bolsas", "Kg", "Mínimo (kg)", "Estado"]);
+    const body = filas.map(r => ["", r.nombre].map((_, i) => i === 0 ? (r.tipo === "terminado" ? "" : r.codigo) : r.nombre)
+      .concat(conPres ? [r.kg_por_bolsa != null ? num(r.kg_por_bolsa, 3) + " kg" : "—"] : [],
+        [num(r.bolsas_total, 0), num(r.kg_total), num(r.stock_minimo_kg), estado(r)]));
+    const totalKg = filas.reduce((s, r) => s + Number(r.kg_total), 0);
+    const nBajos = new Set(filas.filter(bajo).map(r => r.codigo)).size;
+
+    const doc = new window.jspdf.jsPDF({ unit: "pt", format: "a4" });
+    const ahora = new Date().toLocaleString("es-BO", { timeZone: "America/La_Paz", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    doc.setFontSize(16); doc.setFont("helvetica", "bold"); doc.text("Inventario de almacén", 40, 48);
+    doc.setFontSize(9.5); doc.setFont("helvetica", "normal"); doc.setTextColor(90);
+    doc.text(`Generado: ${ahora} (hora de Bolivia)`, 40, 66);
+    doc.text(`Productos: ${new Set(filas.map(r => r.codigo)).size}    Con stock bajo: ${nBajos}    Total: ${num(totalKg)} kg`, 40, 80);
+
+    const colN = conPres ? [3, 4, 5] : [2, 3, 4];
+    const estCol = head.length - 1;
+    const estilos = {}; colN.forEach(c => estilos[c] = { halign: "right" });
+    doc.autoTable({
+      startY: 94, head: [head], body, theme: "grid",
+      styles: { fontSize: 8.5, cellPadding: 4, lineColor: [215, 220, 225], lineWidth: 0.4, textColor: 30 },
+      headStyles: { fillColor: [14, 90, 107], textColor: 255, fontStyle: "bold" },
+      columnStyles: estilos,
+      margin: { left: 40, right: 40 },
+      didParseCell: d => {
+        if (d.section === "body" && estado(filas[d.row.index]) === "Stock bajo") {
+          d.cell.styles.fillColor = [253, 232, 229];
+          if (d.column.index === estCol) { d.cell.styles.textColor = [180, 35, 24]; d.cell.styles.fontStyle = "bold"; }
+        }
+        if (d.section === "head" && colN.includes(d.column.index)) d.cell.styles.halign = "right";
+      },
+      didDrawPage: () => {
+        doc.setFontSize(8); doc.setTextColor(120);
+        doc.text(`Página ${doc.internal.getNumberOfPages()}`, doc.internal.pageSize.getWidth() - 40, doc.internal.pageSize.getHeight() - 20, { align: "right" });
+      }
+    });
+    const dia = new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+    doc.save(`inventario-${dia}.pdf`);
+  };
+})();
+</script>
 </body>
 </html>
