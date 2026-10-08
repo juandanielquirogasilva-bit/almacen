@@ -605,12 +605,14 @@ $("tabs").onclick = e => {
 };
 $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
 </script>
-  <!-- ===== SECCIÓN PRODUCCIÓN: pegar justo antes de </body> (después del </script> que ya tienes) ===== -->
+ <!-- ===== SECCIÓN PRODUCCIÓN v2: REEMPLAZA al bloque de Producción anterior. Va justo antes de </body> ===== -->
 <script>
 (() => {
+  const PREFIJO_LOTE = "CE0"; // si el prefijo real es con la letra O, cámbialo aquí por "CEO"
   const ETAPAS = {1:"Molido", 2:"Embolsado", 3:"Pesado", 4:"Costurado", 5:"Paletizado", 6:"Terminado"};
   const hoy = () => new Date().toLocaleDateString("en-CA", {timeZone: "America/La_Paz"});
-  let uid = null, juan = false, canalP = null, datos = [];
+  const fechaLote = () => { const [y, m, d] = hoy().split("-"); return m + d + y.slice(2); }; // MMDDAA
+  let uid = null, juan = false, canalP = null, datos = [], loteManual = false;
 
   const st = document.createElement("style");
   st.textContent = `
@@ -618,6 +620,7 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     .pe .stat{padding:14px 16px}.pe .stat b{font-size:28px}
     .pg4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
     .et{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--acbg);color:var(--ac)}
+    .gsel{min-height:34px;width:auto;min-width:150px;padding:4px 30px 4px 10px;font-size:13px}
     @media(max-width:1000px){.pe{grid-template-columns:repeat(3,minmax(0,1fr))}.pg4{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:860px){.pe{grid-template-columns:repeat(2,minmax(0,1fr))}.pg4{grid-template-columns:1fr}
       nav button{padding-left:2px;padding-right:2px;font-size:12px}}`;
@@ -633,7 +636,7 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     <div class="page-head">
       <div class="eyebrow">Control</div>
       <h2>Planilla de producción</h2>
-      <p class="sub">Registro diario de lo que se muele y se produce. Es solo de control: no modifica el stock.</p>
+      <p class="sub">Registro diario de lo que se muele y se produce, con su lote y su merma. Es solo de control: no modifica el stock.</p>
     </div>
     <div id="p-form" class="card pad" style="margin-bottom:18px">
       <div class="grid">
@@ -642,6 +645,8 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
         <div><label>Grado de acabado</label><select id="p-etapa">${opEt}</select></div>
         <div><label>Bolsas</label><input id="p-bolsas" type="number" inputmode="numeric" step="1" min="1" placeholder="Cantidad"></div>
         <div><label>Kg por bolsa (opcional)</label><input id="p-kg" type="number" inputmode="decimal" step="any" min="0.001" placeholder="Ej. 25"></div>
+        <div><label>Lote (se arma solo, puedes editarlo)</label><input id="p-lote" placeholder="Se completa con la fecha y los kg"></div>
+        <div><label>Merma (kg)</label><input id="p-merma" type="number" inputmode="decimal" step="any" min="0" value="0"></div>
         <div class="full"><label>Observación (opcional)</label><input id="p-obs" placeholder="Turno, detalle, etc."></div>
       </div>
       <div class="form-actions"><button class="btn" id="p-guardar">Guardar registro</button></div>
@@ -655,25 +660,36 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
       <div><label>Grado</label><select id="pf-etapa"><option value="">Todos</option>${opEt}</select></div>
     </div></div>
     <div class="card flush"><div class="wrap"><table>
-      <thead><tr><th>Fecha y hora</th><th>Área</th><th>Grado</th><th>Producto</th><th class="n">Bolsas</th><th class="n">Kg</th><th>Observación</th><th></th></tr></thead>
+      <thead><tr><th>Fecha y hora</th><th>Área</th><th>Grado</th><th>Producto</th><th>Lote</th><th class="n">Bolsas</th><th class="n">Kg</th><th class="n">Merma (kg)</th><th>Observación</th><th></th></tr></thead>
       <tbody id="p-body"></tbody>
     </table></div></div>
   </section>`);
 
+  const armarLote = () => {
+    if (loteManual) return;
+    const t = (parseInt($("p-bolsas").value, 10) || 0) * (Number($("p-kg").value) || 0);
+    $("p-lote").value = PREFIJO_LOTE + fechaLote() + (t > 0 ? "F" + Math.round(t * 100) / 100 : "");
+  };
+
+  const grado = r => juan
+    ? `<select class="gsel" data-g="${r.id}">${Object.entries(ETAPAS).map(([k, v]) => `<option value="${k}"${Number(k) === r.etapa ? " selected" : ""}>${k} · ${v}</option>`).join("")}</select>`
+    : `<span class="et">${r.etapa} · ${ETAPAS[r.etapa]}</span>`;
+
   const pintar = () => {
     const d = $("p-desde").value, h = $("p-hasta").value, a = $("pf-area").value, e = $("pf-etapa").value;
     const f = datos.filter(r => (!d || diaBO(r.fecha_hora) >= d) && (!h || diaBO(r.fecha_hora) <= h) && (!a || String(r.area_id) === a) && (!e || String(r.etapa) === e));
-    const tot = {}; f.forEach(r => tot[r.etapa] = (tot[r.etapa] || 0) + r.bolsas);
-    $("p-res").innerHTML = Object.entries(ETAPAS).map(([k, v]) => `<div class="stat"><span class="lbl">${k} · ${v}</span><b>${num(tot[k] || 0, 0)}</b><small>bolsas</small></div>`).join("");
-    $("p-body").innerHTML = f.length ? f.map(r => `<tr><td>${fh(r.fecha_hora)}</td><td>${esc(r.areas?.nombre)}</td><td><span class="et">${r.etapa} · ${ETAPAS[r.etapa]}</span></td><td>${esc(r.productos?.nombre)}</td><td class="n">${num(r.bolsas, 0)}</td><td class="n">${r.kg_por_bolsa ? num(r.bolsas * r.kg_por_bolsa) : "—"}</td><td>${esc(r.observacion)}</td><td>${juan ? `<button class="btn sec sm" data-del="${r.id}">Quitar</button>` : ""}</td></tr>`).join("")
-      : '<tr><td colspan="8" class="vacio">No hay registros con ese filtro.</td></tr>';
+    const tot = {}, mer = {};
+    f.forEach(r => { tot[r.etapa] = (tot[r.etapa] || 0) + r.bolsas; mer[r.etapa] = (mer[r.etapa] || 0) + Number(r.merma_kg || 0); });
+    $("p-res").innerHTML = Object.entries(ETAPAS).map(([k, v]) => `<div class="stat"><span class="lbl">${k} · ${v}</span><b>${num(tot[k] || 0, 0)}</b><small>bolsas · merma ${num(mer[k] || 0)} kg</small></div>`).join("");
+    $("p-body").innerHTML = f.length ? f.map(r => `<tr><td>${fh(r.fecha_hora)}</td><td>${esc(r.areas?.nombre)}</td><td>${grado(r)}</td><td>${esc(r.productos?.nombre)}</td><td>${esc(r.lote)}</td><td class="n">${num(r.bolsas, 0)}</td><td class="n">${r.kg_por_bolsa ? num(r.bolsas * r.kg_por_bolsa) : "—"}</td><td class="n">${num(r.merma_kg || 0)}</td><td>${esc(r.observacion)}</td><td>${juan ? `<button class="btn sec sm" data-del="${r.id}">Quitar</button>` : ""}</td></tr>`).join("")
+      : '<tr><td colspan="10" class="vacio">No hay registros con ese filtro.</td></tr>';
   };
 
   const cargarP = async () => {
     const { data, error } = await db.from("produccion")
-      .select("id,fecha_hora,etapa,bolsas,kg_por_bolsa,observacion,area_id,areas(nombre),productos(nombre)")
+      .select("id,fecha_hora,etapa,bolsas,kg_por_bolsa,lote,merma_kg,observacion,area_id,areas(nombre),productos(nombre)")
       .order("fecha_hora", { ascending: false }).limit(2000);
-    if (error) { $("p-body").innerHTML = `<tr><td colspan="8" class="vacio">No se pudo cargar: ${esc(error.message)}</td></tr>`; return; }
+    if (error) { $("p-body").innerHTML = `<tr><td colspan="10" class="vacio">No se pudo cargar: ${esc(error.message)}</td></tr>`; return; }
     datos = data || []; pintar();
   };
 
@@ -687,20 +703,32 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     const ar = (a.data || []).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join("");
     $("p-area").innerHTML = ar; $("pf-area").innerHTML = '<option value="">Todas</option>' + ar;
     $("p-desde").value = $("p-hasta").value = hoy();
+    armarLote();
     await cargarP();
     canalP = db.channel("prod").on("postgres_changes", { event: "*", schema: "public", table: "produccion" }, cargarP).subscribe();
   };
   db.auth.onAuthStateChange((_e, s) => { setTimeout(() => iniciarP(s), 0); });
 
+  ["p-bolsas", "p-kg"].forEach(id => $(id).oninput = armarLote);
+  $("p-lote").oninput = () => { loteManual = $("p-lote").value.trim() !== ""; if (!loteManual) armarLote(); };
+
   $("p-guardar").onclick = async () => {
     const kg = $("p-kg").value;
-    const fila = { producto_codigo: $("p-prod").value, area_id: Number($("p-area").value), etapa: Number($("p-etapa").value), bolsas: parseInt($("p-bolsas").value, 10), kg_por_bolsa: kg ? Number(kg) : null, observacion: $("p-obs").value.trim() || null };
+    const fila = { producto_codigo: $("p-prod").value, area_id: Number($("p-area").value), etapa: Number($("p-etapa").value), bolsas: parseInt($("p-bolsas").value, 10), kg_por_bolsa: kg ? Number(kg) : null, lote: $("p-lote").value.trim() || null, merma_kg: Number($("p-merma").value || 0), observacion: $("p-obs").value.trim() || null };
     if (!(fila.bolsas > 0)) return aviso("p-msg", "Escribe cuántas bolsas (mínimo 1).", false);
     if (fila.kg_por_bolsa !== null && !(fila.kg_por_bolsa > 0)) return aviso("p-msg", "Kg por bolsa debe ser mayor a 0 o dejarse vacío.", false);
+    if (!(fila.merma_kg >= 0)) return aviso("p-msg", "La merma no puede ser negativa.", false);
     const { error } = await db.from("produccion").insert(fila);
     if (error) return aviso("p-msg", "No se guardó: " + error.message, false);
-    aviso("p-msg", `Registrado: ${fila.bolsas} bolsas en ${ETAPAS[fila.etapa]}.`, true);
-    $("p-bolsas").value = ""; $("p-obs").value = "";
+    aviso("p-msg", `Registrado: ${fila.bolsas} bolsas en ${ETAPAS[fila.etapa]}, lote ${fila.lote || "sin lote"}.`, true);
+    $("p-bolsas").value = ""; $("p-obs").value = ""; $("p-merma").value = "0"; loteManual = false; armarLote();
+    cargarP();
+  };
+
+  $("p-body").onchange = async e => {
+    const s = e.target.closest("[data-g]"); if (!s) return;
+    const { data, error } = await db.from("produccion").update({ etapa: Number(s.value) }).eq("id", s.dataset.g).select();
+    if (error || !data?.length) alert("No se pudo cambiar el grado.");
     cargarP();
   };
 
