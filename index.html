@@ -728,7 +728,7 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   $("p-body").onchange = async e => {
     const s = e.target.closest("[data-g]"); if (!s) return;
     const { data, error } = await db.from("produccion").update({ etapa: Number(s.value) }).eq("id", s.dataset.g).select();
-    if (error || !data?.length) alert("No se pudo cambiar el grado.");
+    if (error || !data?.length) alert(error ? error.message : "No se pudo cambiar el grado.");
     cargarP();
   };
 
