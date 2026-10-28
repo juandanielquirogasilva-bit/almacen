@@ -899,5 +899,215 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   montar({ grid: "#t-produccion .pg4", tbody: "p-body", col: 3, titulo: "Planilla de producción", archivo: "produccion", sumas: ["Bolsas", "Kg", "Merma (kg)"], ids: [["Desde", "p-desde"], ["Hasta", "p-hasta"], ["Área", "pf-area"], ["Grado", "pf-etapa"]] });
 })();
 </script>
+  <!-- ===== VERIFICACIÓN (CONTEO FÍSICO): pegar al final, justo antes de </body> ===== -->
+<script>
+(() => {
+  const CLAVE = "verif_conteo_v1";
+  let filas = [], prods = [], cont = {}, extras = [], cache = {}, filtro = "todos", busca = "";
+
+  const st = document.createElement("style");
+  st.textContent = `
+    .vf-prog{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-bottom:12px;font-size:14px;color:var(--mut)}
+    .vf-prog b{color:var(--ink);font-size:22px;margin-right:4px}
+    .vf-prog .o b{color:var(--ok)}.vf-prog .m b{color:var(--red)}
+    .vf-chips{display:flex;gap:8px;margin:10px 0 14px;flex-wrap:wrap}
+    .vf-chips button{min-height:38px;padding:0 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--mut);font-weight:600;font-size:13.5px}
+    .vf-chips button.on{background:var(--ac);color:var(--onac);border-color:var(--ac)}
+    .vf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-bottom:18px}
+    .vf-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+    .vf-card.ok{border-color:var(--okline);background:var(--okbg)}
+    .vf-card.mal{border-color:var(--redline);background:var(--redbg)}
+    .vf-h{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .vf-h b{display:block;font-size:16px;line-height:1.25}
+    .vf-h small{color:var(--mut);font-size:12.5px}
+    .vf-in{width:104px;flex:none;text-align:center;font-size:20px;font-weight:700;min-height:52px}
+    .vf-st{margin-top:10px;font-size:14px;font-weight:600;color:var(--mut)}
+    .vf-st.ok{color:var(--ok)}.vf-st.mal{color:var(--red)}
+    .vf-sal{margin-top:12px;border-top:1px solid var(--redline);padding-top:10px;font-size:13px}
+    .vf-sh{margin-top:6px;color:var(--ink)}
+    .vf-sl{max-height:260px;overflow:auto;display:grid;gap:6px;margin-top:8px}
+    .vf-sr{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 10px;border-radius:8px;background:var(--card);border:1px solid var(--line)}
+    .vf-sr small{grid-column:1/-1;color:var(--mut);font-size:12.5px}
+    .vf-acc{display:flex;gap:10px;flex-wrap:wrap}
+    .vf-add{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:12px;align-items:end}
+    @media(max-width:860px){
+      .vf-grid{grid-template-columns:1fr}
+      .vf-add{grid-template-columns:1fr}
+      .vf-acc .btn{flex:1}
+      .side{overflow-x:auto}
+      nav{overflow-x:auto}
+      nav button{flex:0 0 auto;white-space:nowrap;padding:16px 14px;font-size:13px}
+    }`;
+  document.head.appendChild(st);
+
+  const btn = document.createElement("button");
+  btn.dataset.t = "verificacion"; btn.textContent = "Verificación";
+  $("tabs").insertBefore(btn, $("tabs").querySelector('[data-t="historial"]'));
+
+  document.querySelector("main").insertAdjacentHTML("beforeend", `
+  <section id="t-verificacion" class="hide">
+    <div class="page-head">
+      <div class="eyebrow">Control</div>
+      <h2>Verificación de stock</h2>
+      <p class="sub">Cuenta lo que hay en el almacén y el sistema te dice si coincide. Solo compara: no cambia el stock.</p>
+    </div>
+    <div id="vf-inicio" class="card pad">
+      <div class="vf-acc"><button class="btn" id="vf-empezar">Empezar conteo</button><button class="btn sec hide" id="vf-seguir">Continuar conteo anterior</button></div>
+      <p class="sub" style="margin-top:14px">Cuenta en bolsas, por presentación. El sistema no te muestra su número hasta que escribes el tuyo. Si algo no cuadra, aparecen debajo todas las salidas de ese producto.</p>
+    </div>
+    <div id="vf-conteo" class="hide">
+      <div class="vf-prog"><span><b id="vf-n">0</b>de <span id="vf-t">0</span> contados</span><span class="o"><b id="vf-ok">0</b>correctos</span><span class="m"><b id="vf-mal">0</b>con diferencia</span></div>
+      <input id="vf-q" placeholder="Buscar producto o código">
+      <div class="vf-chips" id="vf-chips"><button data-f="todos" class="on">Todos</button><button data-f="pend">Pendientes</button><button data-f="dif">Con diferencia</button></div>
+      <div class="vf-grid" id="vf-lista"></div>
+      <div class="card pad" style="margin-bottom:18px">
+        <label>¿Encontraste un producto que el sistema no tiene en stock?</label>
+        <div class="vf-add">
+          <select id="vf-prod"></select>
+          <input id="vf-kgx" type="number" inputmode="decimal" step="any" min="0.001" placeholder="Kg por bolsa">
+          <button class="btn sec" id="vf-add">Agregar</button>
+        </div>
+      </div>
+      <div class="vf-acc"><button class="btn sec" id="vf-act">Actualizar datos del sistema</button><button class="btn sec" id="vf-fin">Terminar conteo</button></div>
+    </div>
+  </section>`);
+
+  const KEY = (c, k) => c + "|" + k;
+  const leer = () => { try { return JSON.parse(localStorage.getItem(CLAVE)) || null; } catch (e) { return null; } };
+  const guardar = () => { try { localStorage.setItem(CLAVE, JSON.stringify({ c: cont, x: extras })); } catch (e) {} };
+  const borrar = () => { try { localStorage.removeItem(CLAVE); } catch (e) {} };
+
+  const cargarDatos = async () => {
+    const [a, p] = await Promise.all([
+      db.from("stock_lotes").select("producto_codigo,nombre,kg_por_bolsa,bolsas_restantes").gt("bolsas_restantes", 0),
+      db.from("productos").select("codigo,nombre,tipo").order("codigo")
+    ]);
+    if (a.error || p.error) throw new Error((a.error || p.error).message);
+    prods = p.data || [];
+    const tipo = Object.fromEntries(prods.map(x => [x.codigo, x.tipo]));
+    const m = {};
+    (a.data || []).forEach(r => {
+      const k = KEY(r.producto_codigo, Number(r.kg_por_bolsa));
+      if (!m[k]) m[k] = { key: k, codigo: r.producto_codigo, nombre: r.nombre, kg: Number(r.kg_por_bolsa), esperado: 0, tipo: tipo[r.producto_codigo] };
+      m[k].esperado += Number(r.bolsas_restantes);
+    });
+    extras.forEach(x => {
+      const k = KEY(x.codigo, Number(x.kg));
+      if (!m[k]) { const pr = prods.find(y => y.codigo === x.codigo); m[k] = { key: k, codigo: x.codigo, nombre: pr ? pr.nombre : x.codigo, kg: Number(x.kg), esperado: 0, tipo: pr ? pr.tipo : "materia_prima" }; }
+    });
+    filas = Object.values(m).sort((a, b) => a.codigo.localeCompare(b.codigo) || b.kg - a.kg);
+    $("vf-prod").innerHTML = prods.map(x => `<option value="${esc(x.codigo)}">${esc(x.tipo === "terminado" ? x.nombre : x.codigo + " · " + x.nombre)}</option>`).join("");
+  };
+
+  const estado = f => {
+    const v = cont[f.key];
+    if (v === undefined || String(v).trim() === "") return { c: "p", txt: "Sin contar" };
+    const n = Number(v);
+    if (!(n >= 0)) return { c: "p", txt: "Escribe un número válido" };
+    if (n === f.esperado) return { c: "ok", txt: `✓ Correcto · ${num(n)} bolsas` };
+    const d = n - f.esperado;
+    return { c: "mal", txt: `✗ No cuadra · sistema ${num(f.esperado)} · contaste ${num(n)} · ${d > 0 ? "sobran" : "faltan"} ${num(Math.abs(d))}` };
+  };
+
+  const contadores = () => {
+    const es = filas.map(estado);
+    $("vf-t").textContent = filas.length;
+    $("vf-n").textContent = es.filter(e => e.c !== "p").length;
+    $("vf-ok").textContent = es.filter(e => e.c === "ok").length;
+    $("vf-mal").textContent = es.filter(e => e.c === "mal").length;
+  };
+
+  const cargarSal = async codigo => {
+    if (cache[codigo]) return;
+    cache[codigo] = "cargando";
+    const [s, l] = await Promise.all([
+      db.from("salidas").select("fecha_hora,bolsas,observacion,areas(nombre),lotes!inner(producto_codigo,codigo_pallet,kg_por_bolsa)").eq("lotes.producto_codigo", codigo).order("fecha_hora", { ascending: false }).limit(500),
+      db.from("lotes").select("kg_por_bolsa,bolsas_iniciales").eq("producto_codigo", codigo)
+    ]);
+    cache[codigo] = (s.error || l.error) ? { error: (s.error || l.error).message } : { sal: s.data || [], lotes: l.data || [] };
+    [...$("vf-lista").children].filter(el => el.dataset.c === codigo).forEach(actualizar);
+  };
+
+  const pintarSal = (f, box) => {
+    const c = cache[f.codigo];
+    if (!c || c === "cargando") { box.innerHTML = '<div class="vf-sh">Cargando salidas…</div>'; if (!c) cargarSal(f.codigo); return; }
+    if (c.error) { box.innerHTML = `<div class="vf-sh">No se pudieron cargar las salidas: ${esc(c.error)}</div>`; return; }
+    const tot = c.sal.reduce((s, r) => s + r.bolsas, 0);
+    const ent = c.lotes.filter(l => Number(l.kg_por_bolsa) === f.kg).reduce((s, l) => s + l.bolsas_iniciales, 0);
+    const salP = c.sal.filter(r => Number(r.lotes.kg_por_bolsa) === f.kg).reduce((s, r) => s + r.bolsas, 0);
+    box.innerHTML = `<div class="vf-sh"><b>Cuenta del sistema (${num(f.kg, 3)} kg):</b> entraron ${num(ent, 0)} − salieron ${num(salP, 0)} = ${num(ent - salP, 0)} bolsas</div>
+      <div class="vf-sh">Todas las salidas de ${esc(f.nombre)} (${c.sal.length}) · ${num(tot, 0)} bolsas</div>
+      <div class="vf-sl">${c.sal.length ? c.sal.map(r => `<div class="vf-sr"><span>${fh(r.fecha_hora)}</span><b>${num(r.bolsas, 0)} bolsas</b><small>${esc(r.areas?.nombre)} · ${num(r.lotes.kg_por_bolsa, 3)} kg/bolsa · ${esc(r.lotes.codigo_pallet || "sin pallet")}${r.observacion ? " · " + esc(r.observacion) : ""}</small></div>`).join("") : '<div class="vf-sr"><span>Este producto no tiene salidas registradas.</span></div>'}</div>`;
+  };
+
+  const actualizar = el => {
+    const f = filas.find(x => x.key === el.dataset.k); if (!f) return;
+    const e = estado(f);
+    el.className = "vf-card" + (e.c === "p" ? "" : " " + e.c);
+    const s = el.querySelector(".vf-st"); s.className = "vf-st " + e.c; s.textContent = e.txt;
+    const box = el.querySelector(".vf-sal");
+    if (e.c === "mal") { box.classList.remove("hide"); pintarSal(f, box); } else box.classList.add("hide");
+  };
+
+  const pintar = () => {
+    const q = busca.trim().toLowerCase();
+    const vis = filas.filter(f => (!q || f.nombre.toLowerCase().includes(q) || f.codigo.toLowerCase().includes(q)) && (filtro === "todos" || (filtro === "pend" && estado(f).c === "p") || (filtro === "dif" && estado(f).c === "mal")));
+    $("vf-lista").innerHTML = vis.length ? vis.map(f => `<div class="vf-card" data-k="${esc(f.key)}" data-c="${esc(f.codigo)}"><div class="vf-h"><div><b>${esc(f.nombre)}</b><small>${num(f.kg, 3)} kg por bolsa${f.tipo === "terminado" ? "" : " · " + esc(f.codigo)}</small></div><input class="vf-in" type="number" inputmode="decimal" step="any" min="0" placeholder="Bolsas" value="${esc(cont[f.key] ?? "")}"></div><div class="vf-st"></div><div class="vf-sal hide"></div></div>`).join("")
+      : '<div class="vacio">No hay productos con ese filtro.</div>';
+    [...$("vf-lista").children].forEach(el => { if (el.dataset.k) actualizar(el); });
+    contadores();
+  };
+
+  const empezar = async restaurar => {
+    try {
+      const g = restaurar ? leer() : null;
+      cont = g ? g.c : {}; extras = g ? g.x : []; cache = {}; filtro = "todos"; busca = ""; $("vf-q").value = "";
+      await cargarDatos();
+      if (!restaurar) guardar();
+      $("vf-inicio").classList.add("hide"); $("vf-conteo").classList.remove("hide");
+      document.querySelectorAll("#vf-chips button").forEach(b => b.classList.toggle("on", b.dataset.f === "todos"));
+      pintar();
+    } catch (e) { alert("No se pudo cargar el stock del sistema: " + e.message); }
+  };
+
+  const revisarGuardado = () => {
+    const g = leer(), n = g ? Object.values(g.c).filter(v => String(v).trim() !== "").length : 0;
+    $("vf-seguir").classList.toggle("hide", !n);
+    $("vf-seguir").textContent = `Continuar conteo anterior (${n} contados)`;
+  };
+  revisarGuardado();
+
+  $("vf-empezar").onclick = () => { if (!$("vf-seguir").classList.contains("hide") && !confirm("Hay un conteo guardado. Si empiezas uno nuevo, se borra. ¿Continuar?")) return; empezar(false); };
+  $("vf-seguir").onclick = () => empezar(true);
+  $("vf-fin").onclick = () => { if (!confirm("¿Terminar el conteo? Se borra lo que escribiste.")) return; cont = {}; extras = []; cache = {}; borrar(); revisarGuardado(); $("vf-conteo").classList.add("hide"); $("vf-inicio").classList.remove("hide"); };
+  $("vf-act").onclick = async () => { try { cache = {}; await cargarDatos(); pintar(); } catch (e) { alert("No se pudo actualizar: " + e.message); } };
+  $("vf-q").oninput = e => { busca = e.target.value; pintar(); };
+  $("vf-chips").onclick = e => { const b = e.target.closest("button"); if (!b) return; filtro = b.dataset.f; document.querySelectorAll("#vf-chips button").forEach(x => x.classList.toggle("on", x === b)); pintar(); };
+
+  $("vf-lista").addEventListener("input", e => {
+    const i = e.target.closest(".vf-in"); if (!i) return;
+    const card = i.closest(".vf-card");
+    cont[card.dataset.k] = i.value; guardar();
+    clearTimeout(i._t); i._t = setTimeout(() => { actualizar(card); contadores(); }, 500);
+  });
+
+  $("vf-add").onclick = async () => {
+    const codigo = $("vf-prod").value, kg = Number($("vf-kgx").value);
+    if (!(kg > 0)) return alert("Escribe los kg por bolsa.");
+    if (!extras.some(x => x.codigo === codigo && Number(x.kg) === kg)) extras.push({ codigo, kg });
+    guardar(); filtro = "todos"; busca = ""; $("vf-q").value = "";
+    document.querySelectorAll("#vf-chips button").forEach(b => b.classList.toggle("on", b.dataset.f === "todos"));
+    try { await cargarDatos(); } catch (e) { return alert("No se pudo agregar: " + e.message); }
+    pintar(); $("vf-kgx").value = "";
+    const el = [...$("vf-lista").children].find(c => c.dataset.k === KEY(codigo, kg));
+    if (el) { el.scrollIntoView({ block: "center" }); el.querySelector(".vf-in").focus(); }
+  };
+
+  $("tabs").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    $("t-verificacion").classList.toggle("hide", b.dataset.t !== "verificacion");
+  });
+})();
+</script>
 </body>
 </html>
