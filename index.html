@@ -899,7 +899,9 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   montar({ grid: "#t-produccion .pg4", tbody: "p-body", col: 3, titulo: "Planilla de producción", archivo: "produccion", sumas: ["Bolsas", "Kg", "Merma (kg)"], ids: [["Desde", "p-desde"], ["Hasta", "p-hasta"], ["Área", "pf-area"], ["Grado", "pf-etapa"]] });
 })();
 </script>
-  <!-- ===== VERIFICACIÓN (CONTEO FÍSICO): pegar al final, justo antes de </body> ===== -->
+<!-- ===== VERIFICACIÓN (CONTEO FÍSICO) v2: REEMPLAZA al bloque anterior. Va al final, justo antes de </body> ===== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
 (() => {
   const CLAVE = "verif_conteo_v1";
@@ -1079,7 +1081,58 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
 
   $("vf-empezar").onclick = () => { if (!$("vf-seguir").classList.contains("hide") && !confirm("Hay un conteo guardado. Si empiezas uno nuevo, se borra. ¿Continuar?")) return; empezar(false); };
   $("vf-seguir").onclick = () => empezar(true);
-  $("vf-fin").onclick = () => { if (!confirm("¿Terminar el conteo? Se borra lo que escribiste.")) return; cont = {}; extras = []; cache = {}; borrar(); revisarGuardado(); $("vf-conteo").classList.add("hide"); $("vf-inicio").classList.remove("hide"); };
+  $("vf-conteo").insertAdjacentHTML("afterend", `<div id="vf-resumen" class="card pad hide"><h3 style="margin:0 0 6px">Conteo terminado</h3><p class="sub" id="vf-rtxt"></p><div class="vf-acc" style="margin-top:16px"><button class="btn" id="vf-pdf">Descargar PDF</button><button class="btn sec" id="vf-volver">Volver al conteo</button><button class="btn sec" id="vf-cerrar">Cerrar y borrar conteo</button></div></div>`);
+
+  $("vf-fin").onclick = () => {
+    const es = filas.map(estado), n = c => es.filter(e => e.c === c).length;
+    $("vf-rtxt").textContent = `Contados ${n("ok") + n("mal")} de ${filas.length}: ${n("ok")} correctos, ${n("mal")} con diferencia y ${n("p")} sin contar.`;
+    $("vf-conteo").classList.add("hide"); $("vf-resumen").classList.remove("hide");
+  };
+  $("vf-volver").onclick = () => { $("vf-resumen").classList.add("hide"); $("vf-conteo").classList.remove("hide"); };
+  $("vf-cerrar").onclick = () => {
+    if (!confirm("¿Cerrar el conteo? Se borra lo que escribiste. Descarga el PDF antes si lo necesitas.")) return;
+    cont = {}; extras = []; cache = {}; borrar(); revisarGuardado();
+    $("vf-resumen").classList.add("hide"); $("vf-inicio").classList.remove("hide");
+  };
+
+  $("vf-pdf").onclick = async () => {
+    if (!window.jspdf) return alert("No se pudo cargar el generador de PDF. Revisa tu conexión y recarga la página.");
+    const { data: ses } = await db.auth.getSession();
+    const usuario = ses?.session?.user?.email || "";
+    const orden = { mal: 0, ok: 1, p: 2 };
+    const R = filas.map(f => ({ f, e: estado(f) })).sort((a, b) => orden[a.e.c] - orden[b.e.c] || a.f.codigo.localeCompare(b.f.codigo) || b.f.kg - a.f.kg);
+    const cuenta = c => R.filter(r => r.e.c === c).length;
+    const body = R.map(({ f, e }) => {
+      const v = Number(cont[f.key]), sin = e.c === "p";
+      return [f.tipo === "terminado" ? "" : f.codigo, f.nombre, num(f.kg, 3) + " kg", num(f.esperado), sin ? "—" : num(v), sin ? "—" : (v - f.esperado > 0 ? "+" : "") + num(v - f.esperado), e.c === "ok" ? "Correcto" : e.c === "mal" ? "Con diferencia" : "Sin contar"];
+    });
+    const doc = new window.jspdf.jsPDF({ unit: "pt", format: "a4" });
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    const ahora = new Date().toLocaleString("es-BO", { timeZone: "America/La_Paz", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    doc.setFontSize(16); doc.setFont("helvetica", "bold"); doc.setTextColor(20); doc.text("Verificación de stock · Conteo físico", 40, 46);
+    doc.setFontSize(9.5); doc.setFont("helvetica", "normal"); doc.setTextColor(90);
+    doc.text(`Generado: ${ahora} (hora de Bolivia)${usuario ? "   |   Usuario: " + usuario : ""}`, 40, 64);
+    doc.text(`Productos: ${R.length}     Correctos: ${cuenta("ok")}     Con diferencia: ${cuenta("mal")}     Sin contar: ${cuenta("p")}`, 40, 78);
+    doc.setFontSize(8.5); doc.setTextColor(120);
+    doc.text("Sistema = bolsas según el sistema al cargar el conteo. Contado = bolsas contadas físicamente. Las diferencias aparecen primero.", 40, 91);
+    doc.autoTable({
+      startY: 104, head: [["Código", "Producto", "Presentación", "Sistema", "Contado", "Diferencia", "Resultado"]], body, theme: "grid",
+      styles: { fontSize: 8.5, cellPadding: 4, lineColor: [215, 220, 225], lineWidth: 0.4, textColor: 30 },
+      headStyles: { fillColor: [14, 90, 107], textColor: 255, fontStyle: "bold" },
+      columnStyles: { 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" } },
+      margin: { left: 40, right: 40 },
+      didParseCell: d => {
+        if (d.section === "head" && [3, 4, 5].includes(d.column.index)) d.cell.styles.halign = "right";
+        if (d.section !== "body") return;
+        const c = R[d.row.index].e.c;
+        if (c === "mal") { d.cell.styles.fillColor = [253, 232, 229]; if (d.column.index >= 5) { d.cell.styles.textColor = [180, 35, 24]; d.cell.styles.fontStyle = "bold"; } }
+        else if (c === "ok" && d.column.index === 6) d.cell.styles.textColor = [6, 118, 71];
+        else if (c === "p") d.cell.styles.textColor = [130, 140, 150];
+      },
+      didDrawPage: () => { doc.setFontSize(8); doc.setTextColor(120); doc.text(`Página ${doc.internal.getNumberOfPages()}`, W - 40, H - 20, { align: "right" }); }
+    });
+    doc.save(`conteo-fisico-${new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" })}.pdf`);
+  };
   $("vf-act").onclick = async () => { try { cache = {}; await cargarDatos(); pintar(); } catch (e) { alert("No se pudo actualizar: " + e.message); } };
   $("vf-q").oninput = e => { busca = e.target.value; pintar(); };
   $("vf-chips").onclick = e => { const b = e.target.closest("button"); if (!b) return; filtro = b.dataset.f; document.querySelectorAll("#vf-chips button").forEach(x => x.classList.toggle("on", x === b)); pintar(); };
