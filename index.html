@@ -1162,5 +1162,190 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   });
 })();
 </script>
+  <!-- ===== CODIFICADOR (HOJAS DE PALLET): pegar al final, justo antes de </body> ===== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+(() => {
+  const CLAVE = "codificador_v1";
+  const PAL = ["#1f4fa3","#4aa3df","#1aa89a","#1e8e3e","#0f6b2f","#7ccf70","#7a8f2a","#fbc916","#d4a017","#f57c00","#c4553a","#d93025","#e85d9e","#7b3fa0","#5b5bd6","#7a4a2a","#5f7a8c","#111111"];
+  const FAM = { acidulantes:"#1e8e3e", "aminoácidos":"#7b3fa0", antioxidantes:"#0f6b2f", carriers:"#5f7a8c", conservantes:"#f57c00", edulcorantes:"#d93025", especias:"#c4553a", extractos:"#7a8f2a", funcionales:"#5b5bd6", humectantes:"#4aa3df", minerales:"#1f4fa3", potenciadores:"#fbc916", reguladores:"#5f7a8c", texturizantes:"#1aa89a", vitaminas:"#d4a017" };
+  let prods = [], sis = {}, filtro = "todos", busca = "", abierto = false;
+  let est = { lin: {}, col: {} };
+  try { est = JSON.parse(localStorage.getItem(CLAVE)) || est; } catch (e) {}
+  const guardar = () => { try { localStorage.setItem(CLAVE, JSON.stringify(est)); } catch (e) {} };
+
+  const st = document.createElement("style");
+  st.textContent = `
+    .cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px;margin-bottom:18px}
+    .cd-card{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--ac);border-radius:12px;padding:14px 16px;min-width:0}
+    .cd-h b{display:block;font-size:16px;line-height:1.25}
+    .cd-h small{color:var(--mut);font-size:12.5px}
+    .cd-l{display:grid;grid-template-columns:84px minmax(0,1fr) 150px 44px;gap:8px;align-items:end;margin-top:10px}
+    .cd-l label{margin-bottom:4px}
+    .cd-x{min-height:44px;border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:8px;font-size:18px}
+    .cd-acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+    .cd-col summary{cursor:pointer;color:var(--ac);font-weight:600;font-size:13.5px;display:inline-flex;align-items:center;gap:8px;min-height:36px}
+    .cd-chip{width:18px;height:18px;border-radius:5px;border:1px solid var(--line);display:inline-block}
+    .cd-sws{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px}
+    .cd-s{width:32px;height:32px;border-radius:8px;border:2px solid transparent;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+    .cd-s.on{border-color:var(--ink)}
+    .cd-sws input[type=color]{width:44px;min-height:32px;height:32px;padding:0;border-radius:8px}
+    @media(max-width:860px){
+      .cd-grid{grid-template-columns:1fr}
+      .cd-l{grid-template-columns:84px minmax(0,1fr) 44px}
+      .cd-l .cd-x{grid-column:3;grid-row:1}
+      .cd-l .cd-fvw{grid-column:1/3;grid-row:2}
+      .side{overflow-x:auto}nav{overflow-x:auto}
+      nav button{flex:0 0 auto;white-space:nowrap;padding:16px 14px;font-size:13px}
+    }`;
+  document.head.appendChild(st);
+
+  const btn = document.createElement("button");
+  btn.dataset.t = "codificador"; btn.textContent = "Codificador";
+  $("tabs").insertBefore(btn, $("tabs").querySelector('[data-t="historial"]'));
+
+  document.querySelector("main").insertAdjacentHTML("beforeend", `
+  <section id="t-codificador" class="hide">
+    <div class="page-head">
+      <div class="eyebrow">Herramientas</div>
+      <h2>Codificador de pallets</h2>
+      <p class="sub">Prepara las hojas para pegar en cada pallet. Por cada producto indicas cuántas hojas, el lote y el vencimiento. El número de pallet se pone solo (1, 2, 3…) y la cantidad queda en blanco para escribirla a mano.</p>
+    </div>
+    <div class="vf-prog" style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-bottom:12px;font-size:14px;color:var(--mut)"><span><b id="cd-p" style="color:var(--ink);font-size:22px;margin-right:4px">0</b>productos con hojas</span><span><b id="cd-n" style="color:var(--ink);font-size:22px;margin-right:4px">0</b>hojas en total</span></div>
+    <input id="cd-q" placeholder="Buscar producto o código">
+    <div class="vf-chips" id="cd-chips" style="display:flex;gap:8px;margin:10px 0 14px;flex-wrap:wrap"><button data-f="todos" class="on">Todos</button><button data-f="con">Con hojas</button></div>
+    <div class="cd-grid" id="cd-lista"></div>
+    <div class="vf-acc" style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" id="cd-todo">Descargar PDF de todo</button><button class="btn sec" id="cd-limpiar">Limpiar todo</button></div>
+  </section>`);
+
+  const chipsCss = document.createElement("style");
+  chipsCss.textContent = `#cd-chips button{min-height:38px;padding:0 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--mut);font-weight:600;font-size:13.5px}#cd-chips button.on{background:var(--ac);color:var(--onac);border-color:var(--ac)}`;
+  document.head.appendChild(chipsCss);
+
+  const defColor = p => { const f = (p.familia || "").toLowerCase(); for (const k in FAM) if (f.startsWith(k)) return FAM[k]; return "#1f4fa3"; };
+  const col = p => est.col[p.codigo] || defColor(p);
+  const lineas = c => est.lin[c] || (est.lin[c] = [{ h: "", lote: "", fv: "" }]);
+  const hojasDe = c => lineas(c).reduce((s, l) => s + (parseInt(l.h, 10) || 0), 0);
+
+  const cardHTML = p => {
+    const c = p.codigo, s = sis[c], color = col(p);
+    const info = s ? ` · Sistema: ${num(s.b, 0)} bolsas` : "";
+    return `<div class="cd-card" data-c="${esc(c)}" style="border-left-color:${color}">
+      <div class="cd-h"><b>${esc(p.nombre)}</b><small>${p.tipo === "terminado" ? "Producto terminado" : esc(c)}${info}</small></div>
+      ${lineas(c).map((l, i) => `<div class="cd-l" data-i="${i}">
+        <div><label>Hojas</label><input class="cd-hj" type="number" inputmode="numeric" min="0" step="1" value="${esc(l.h)}"></div>
+        <div><label>Lote</label><input class="cd-lote" value="${esc(l.lote)}" placeholder="Ej. L-240915"></div>
+        <div class="cd-fvw"><label>Vencimiento</label><input class="cd-fv" type="date" value="${esc(l.fv)}"></div>
+        <button class="cd-x" title="Quitar este lote">×</button></div>`).join("")}
+      <div class="cd-acc">
+        <button class="btn sec sm cd-mas">+ Otro lote</button>
+        <button class="btn sec sm cd-pdf">Descargar este producto</button>
+      </div>
+      <details class="cd-col"><summary><span class="cd-chip" style="background:${color}"></span>Color de la hoja</summary>
+        <div class="cd-sws">${PAL.map(h => `<button class="cd-s${h === color ? " on" : ""}" data-h="${h}" style="background:${h}" title="${h}"></button>`).join("")}<input type="color" class="cd-cc" value="${color}"></div>
+      </details></div>`;
+  };
+
+  const contadores = () => {
+    const con = prods.filter(p => hojasDe(p.codigo) > 0);
+    $("cd-p").textContent = con.length;
+    $("cd-n").textContent = con.reduce((s, p) => s + hojasDe(p.codigo), 0);
+  };
+
+  const pintar = () => {
+    const q = busca.trim().toLowerCase();
+    const vis = prods.filter(p => (!q || p.nombre.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q)) && (filtro === "todos" || hojasDe(p.codigo) > 0));
+    $("cd-lista").innerHTML = vis.length ? vis.map(cardHTML).join("") : '<div class="vacio">No hay productos con ese filtro.</div>';
+    contadores();
+  };
+  const repintarCard = c => { const el = [...$("cd-lista").children].find(x => x.dataset.c === c); const p = prods.find(x => x.codigo === c); if (el && p) el.outerHTML = cardHTML(p); contadores(); };
+
+  const cargar = async () => {
+    const [p, s] = await Promise.all([
+      db.from("productos").select("codigo,nombre,familia,tipo").order("codigo"),
+      db.from("stock_productos").select("codigo,bolsas_total")
+    ]);
+    if (p.error) { $("cd-lista").innerHTML = `<div class="vacio">No se pudieron cargar los productos: ${esc(p.error.message)}</div>`; return; }
+    prods = p.data || []; sis = {};
+    (s.data || []).forEach(r => { sis[r.codigo] = { b: (sis[r.codigo]?.b || 0) + Number(r.bolsas_total) }; });
+    pintar();
+  };
+
+  /* ---------- Eventos de la lista ---------- */
+  $("cd-lista").addEventListener("input", e => {
+    const card = e.target.closest(".cd-card"); if (!card) return;
+    const c = card.dataset.c;
+    if (e.target.matches(".cd-cc")) { est.col[c] = e.target.value; guardar(); card.style.borderLeftColor = e.target.value; card.querySelector(".cd-chip").style.background = e.target.value; card.querySelectorAll(".cd-s").forEach(b => b.classList.remove("on")); return; }
+    const row = e.target.closest(".cd-l"); if (!row) return;
+    const l = lineas(c)[Number(row.dataset.i)];
+    if (e.target.matches(".cd-hj")) l.h = e.target.value;
+    else if (e.target.matches(".cd-lote")) l.lote = e.target.value;
+    else if (e.target.matches(".cd-fv")) l.fv = e.target.value;
+    guardar(); contadores();
+  });
+  $("cd-lista").addEventListener("click", e => {
+    const card = e.target.closest(".cd-card"); if (!card) return;
+    const c = card.dataset.c;
+    if (e.target.closest(".cd-mas")) { lineas(c).push({ h: "", lote: "", fv: "" }); guardar(); repintarCard(c); }
+    else if (e.target.closest(".cd-x")) { const i = Number(e.target.closest(".cd-l").dataset.i); const ls = lineas(c); if (ls.length > 1) ls.splice(i, 1); else ls[0] = { h: "", lote: "", fv: "" }; guardar(); repintarCard(c); }
+    else if (e.target.closest(".cd-pdf")) generar([c]);
+    else if (e.target.closest(".cd-s")) {
+      const h = e.target.closest(".cd-s").dataset.h; est.col[c] = h; guardar();
+      card.style.borderLeftColor = h; card.querySelector(".cd-chip").style.background = h; card.querySelector(".cd-cc").value = h;
+      card.querySelectorAll(".cd-s").forEach(b => b.classList.toggle("on", b === e.target.closest(".cd-s")));
+    }
+  });
+  $("cd-q").oninput = e => { busca = e.target.value; pintar(); };
+  $("cd-chips").onclick = e => { const b = e.target.closest("button"); if (!b) return; filtro = b.dataset.f; document.querySelectorAll("#cd-chips button").forEach(x => x.classList.toggle("on", x === b)); pintar(); };
+  $("cd-todo").onclick = () => generar(prods.filter(p => hojasDe(p.codigo) > 0).map(p => p.codigo));
+  $("cd-limpiar").onclick = () => { if (!confirm("¿Borrar las hojas, lotes y vencimientos que escribiste? Los colores se conservan.")) return; est.lin = {}; guardar(); pintar(); };
+
+  /* ---------- PDF: una hoja horizontal (Carta) por pallet ---------- */
+  function generar(codigos) {
+    if (!window.jspdf) return alert("No se pudo cargar el generador de PDF. Revisa tu conexión y recarga la página.");
+    const hojas = [];
+    codigos.forEach(c => {
+      const p = prods.find(x => x.codigo === c); if (!p) return; let n = 0;
+      lineas(c).forEach(l => { const h = Math.min(parseInt(l.h, 10) || 0, 500); for (let i = 0; i < h; i++) hojas.push({ p, num: ++n, lote: l.lote.trim(), fv: l.fv ? l.fv.split("-").reverse().join("/") : "", color: col(p) }); });
+    });
+    if (!hojas.length) return alert("Escribe cuántas hojas quieres en al menos un producto.");
+    if (hojas.length > 300 && !confirm(`Vas a generar ${hojas.length} hojas. ¿Continuar?`)) return;
+
+    const doc = new window.jspdf.jsPDF({ unit: "pt", format: "letter", orientation: "landscape" });
+    const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+    const fit = (t, ancho, max) => { doc.setFont("helvetica", "bold"); let s = max; doc.setFontSize(s); while (doc.getTextWidth(t) > ancho && s > 8) { s -= 2; doc.setFontSize(s); } };
+    const centro = (t, x, y, ancho, max, color) => { doc.setTextColor(...color); fit(t, ancho, max); doc.text(t, x, y, { align: "center" }); };
+
+    hojas.forEach((h, k) => {
+      if (k) doc.addPage();
+      const c = rgb(h.color), lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2], tx = lum > 165 ? [20, 20, 20] : [255, 255, 255];
+      doc.setFillColor(...c); doc.rect(0, 0, 792, 612, "F");
+      const term = h.p.tipo === "terminado";
+      doc.setFont("helvetica", "bold"); doc.setFontSize(24); doc.setTextColor(...tx); doc.text(term ? "PRODUCTO" : "CÓDIGO", 60, 62);
+      centro(term ? h.p.nombre.toUpperCase() : h.p.codigo, 396, term ? 175 : 190, 700, term ? 90 : 130, tx);
+      if (!term) centro(h.p.nombre, 396, 232, 700, 26, tx);
+      doc.setFillColor(255, 255, 255); doc.roundedRect(40, 262, 712, 310, 6, 6, "F");
+      doc.setDrawColor(...c); doc.setLineWidth(3);
+      doc.line(396, 282, 396, 552); doc.line(64, 407, 372, 407); doc.line(420, 407, 728, 407);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(17); doc.setTextColor(85, 85, 85);
+      doc.text("N° DE PALLET", 64, 303); doc.text("LOTE", 420, 303); doc.text("CANTIDAD", 64, 435); doc.text("FV (FECHA DE VENCIMIENTO)", 420, 435);
+      centro(String(h.num), 218, 382, 290, 96, [17, 17, 17]);
+      if (h.lote) centro(h.lote, 574, 372, 290, 64, [17, 17, 17]);
+      if (h.fv) centro(h.fv, 574, 517, 290, 62, [17, 17, 17]);
+      doc.setDrawColor(40, 40, 40); doc.setLineWidth(2); doc.line(80, 520, 290, 520);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(26); doc.setTextColor(150, 150, 150); doc.text("sacos", 300, 520);
+    });
+    const dia = new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+    doc.save(codigos.length === 1 ? `hojas-${codigos[0]}-${dia}.pdf` : `hojas-pallet-${dia}.pdf`);
+  }
+
+  $("tabs").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    const ver = b.dataset.t === "codificador";
+    $("t-codificador").classList.toggle("hide", !ver);
+    if (ver) cargar();
+  });
+})();
+</script>
 </body>
 </html>
