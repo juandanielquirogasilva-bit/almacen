@@ -1346,44 +1346,45 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   });
 })();
 </script>
-  <!-- ===== FECHA MANUAL OPCIONAL: pegar al final, justo antes de </body> ===== -->
+<!-- ===== FECHA MANUAL OPCIONAL v2: pegar al final, justo antes de </body> ===== -->
 <script>
 (() => {
-  /* AJUSTA ESTAS DOS LÍNEAS */
-  const TABLAS = ["salidas"];            // tablas donde aplica (ver nota abajo)
-  const DONDE  = "#t-salidas form";      // dónde poner el botón (ver nota abajo)
-
-  const caja = document.createElement("div");
-  caja.style.cssText = "display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0";
-  caja.innerHTML = '<button type="button" class="btn sec sm">Cambiar fecha y hora</button><input type="datetime-local" class="hide" style="max-width:240px">';
-  const [b, inp] = caja.children;
-
-  const destino = document.querySelector(DONDE);
-  if (destino) destino.prepend(caja);
-  else { caja.style.cssText += ";position:fixed;bottom:12px;left:12px;z-index:50;background:var(--card);padding:8px 12px;border:1px solid var(--line);border-radius:10px"; document.body.appendChild(caja); }
-
+  const CONF = [
+    { tabla: "lotes",      col: "fecha_ingreso", sec: "#t-entrada" },
+    { tabla: "salidas",    col: "fecha_hora",    sec: "#t-salida" },
+    { tabla: "produccion", col: "fecha_hora",    sec: "#t-produccion" }
+  ];
   const local = d => { d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
-  const activo = () => !inp.classList.contains("hide") && inp.value;
-  const reset = () => { inp.classList.add("hide"); inp.value = ""; b.textContent = "Cambiar fecha y hora"; };
+  const estado = {};
 
-  b.onclick = () => {
-    if (activo()) return reset();
-    inp.max = local(new Date());
-    inp.value = local(new Date());
-    inp.classList.remove("hide");
-    b.textContent = "Volver a hora automática";
-  };
+  CONF.forEach(c => {
+    const sec = document.querySelector(c.sec); if (!sec) return;
+    const caja = document.createElement("div");
+    caja.style.cssText = "display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0";
+    caja.innerHTML = '<button type="button" class="btn sec sm">Cambiar fecha y hora</button><input type="datetime-local" class="hide" style="max-width:240px">';
+    const [b, inp] = caja.children;
+    const fa = sec.querySelector(".form-actions");
+    fa ? fa.before(caja) : sec.querySelector(".card, .grid")?.after(caja);
+    const activo = () => !inp.classList.contains("hide") && !!inp.value;
+    const reset = () => { inp.classList.add("hide"); inp.value = ""; b.textContent = "Cambiar fecha y hora"; };
+    b.onclick = () => {
+      if (activo()) return reset();
+      inp.max = local(new Date()); inp.value = local(new Date());
+      inp.classList.remove("hide"); b.textContent = "Volver a hora automática";
+    };
+    estado[c.tabla] = { c, activo, inp, reset };
+  });
 
   const orig = db.from.bind(db);
   db.from = tabla => {
-    const q = orig(tabla);
-    if (!TABLAS.includes(tabla) || !q.insert) return q;
+    const q = orig(tabla), e = estado[tabla];
+    if (!e || !q.insert) return q;
     const ins = q.insert.bind(q);
     q.insert = (datos, ...resto) => {
-      if (activo()) {
-        const f = new Date(inp.value).toISOString();
-        datos = Array.isArray(datos) ? datos.map(d => ({ ...d, fecha_hora: f })) : { ...datos, fecha_hora: f };
-        setTimeout(reset, 0);   // el siguiente registro vuelve a la hora automática
+      if (e.activo()) {
+        const f = new Date(e.inp.value).toISOString();
+        datos = Array.isArray(datos) ? datos.map(d => ({ ...d, [e.c.col]: f })) : { ...datos, [e.c.col]: f };
+        return Promise.resolve(ins(datos, ...resto)).then(r => { if (!r.error) e.reset(); return r; });
       }
       return ins(datos, ...resto);
     };
