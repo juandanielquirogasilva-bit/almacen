@@ -1392,5 +1392,51 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   };
 })();
 </script>
+  <!-- ===== ACCESO LIMITADO (solo Producción e Historial): pegar al final, justo antes de </body> ===== -->
+<script>
+(() => {
+  // Pega aquí el User UID de cada usuario con acceso limitado (entre comillas, separados por coma)
+  const SOLO_VER = ["PEGA-AQUI-EL-UID-DEL-USUARIO-NUEVO"];
+  // Secciones que sí puede abrir (el resto queda con candado)
+  const PERMITIDAS = ["produccion", "historial"];
+  let limitado = false;
+
+  const st = document.createElement("style");
+  st.textContent = `
+    body.limitado #tabs .solo-juan{display:block!important}
+    body.limitado #tabs button:not([data-t="produccion"]):not([data-t="historial"]){opacity:.55;cursor:not-allowed}
+    body.limitado #tabs button:not([data-t="produccion"]):not([data-t="historial"])::after{content:"🔒";margin-left:8px;font-size:13px}`;
+  document.head.appendChild(st);
+
+  const aviso = t => {
+    let d = $("lk-toast");
+    if (!d) {
+      d = document.createElement("div"); d.id = "lk-toast";
+      d.style.cssText = "position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;z-index:99;box-shadow:0 6px 20px rgba(0,0,0,.3)";
+      document.body.appendChild(d);
+    }
+    d.textContent = t; d.style.display = "block";
+    clearTimeout(d._t); d._t = setTimeout(() => d.style.display = "none", 2200);
+  };
+
+  // Bloquea el clic en las secciones con candado
+  $("tabs").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b || !limitado || PERMITIDAS.includes(b.dataset.t)) return;
+    e.stopPropagation(); e.preventDefault();
+    aviso("🔒 No tienes acceso a esta sección");
+  }, true);
+
+  const aplicar = s => {
+    const lim = !!s && SOLO_VER.includes(s.user.id);
+    if (lim === limitado) return;
+    limitado = lim;
+    document.body.classList.toggle("limitado", lim);
+    const t = document.querySelector(`#tabs [data-t="${lim ? "produccion" : "stock"}"]`);
+    if (t) t.click();
+  };
+  db.auth.onAuthStateChange((_e, s) => { setTimeout(() => aplicar(s), 0); });
+})();
+</script>
 </body>
 </html>
