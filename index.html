@@ -1438,5 +1438,67 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   db.auth.onAuthStateChange((_e, s) => { setTimeout(() => aplicar(s), 0); });
 })();
 </script>
+  <!-- ===== DESCARGAR EXCEL: pegar al final, justo antes de </body> (después del bloque de filtros y PDF) ===== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(() => {
+  const parseNum = s => Number(String(s).replace(/\./g, "").replace(",", "."));
+  const fechaCorta = v => v.split("-").reverse().join("/");
+
+  function excel(cfg) {
+    if (!window.XLSX) return alert("No se pudo cargar el generador de Excel. Revisa tu conexión y recarga la página.");
+    const tb = $(cfg.tbody), tabla = tb.closest("table");
+    const ths = [...tabla.querySelectorAll("thead th")];
+    const idx = ths.map((t, i) => t.textContent.trim() ? i : -1).filter(i => i >= 0);
+    const trs = [...tb.children].filter(tr => tr.style.display !== "none" && !tr.classList.contains("det") && !tr.querySelector("td.vacio"));
+    if (!trs.length) return alert("No hay datos para descargar con los filtros actuales.");
+    const txt = c => { const s = c.querySelector("select"); return (s ? s.selectedOptions[0].text : c.textContent).replace(/\s+/g, " ").trim(); };
+    const head = idx.map(i => ths[i].textContent.trim());
+    const nums = idx.map(i => ths[i].classList.contains("n"));
+    const aoa = [head].concat(trs.map(tr => idx.map((i, k) => {
+      const t = txt(tr.children[i]);
+      if (!nums[k]) return t;
+      const n = parseNum(t); return isNaN(n) ? t : n;
+    })));
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = head.map((h, k) => ({ wch: Math.min(45, Math.max(h.length, ...aoa.slice(1).map(r => String(r[k] ?? "").length)) + 2) }));
+    ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: head.length - 1 } }) };
+    for (let r = 1; r < aoa.length; r++) nums.forEach((esN, c) => { if (esN && typeof aoa[r][c] === "number") ws[XLSX.utils.encode_cell({ r, c })].z = "#,##0.##"; });
+
+    const sec = document.querySelector(cfg.sec);
+    const fil = cfg.ids.map(([n, id]) => {
+      const e = $(id); if (!e || !e.value) return null;
+      return [n, e.tagName === "SELECT" ? e.selectedOptions[0].text : e.type === "date" ? fechaCorta(e.value) : e.value];
+    }).filter(Boolean);
+    const prod = (sec.querySelector("details.mp > summary") || {}).textContent || "Todos los productos";
+    const sumas = cfg.sumas.map(n => { const k = head.indexOf(n); return k < 0 ? null : ["Total " + n, aoa.slice(1).reduce((s, r) => s + (typeof r[k] === "number" ? r[k] : 0), 0)]; }).filter(Boolean);
+    const ahora = new Date().toLocaleString("es-BO", { timeZone: "America/La_Paz", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const res = [[cfg.titulo], ["Generado", ahora + " (hora de Bolivia)"], ["Productos", prod], ...fil, ["Filas", aoa.length - 1], ...sumas];
+    const wr = XLSX.utils.aoa_to_sheet(res);
+    wr["!cols"] = [{ wch: 22 }, { wch: 44 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Datos");
+    XLSX.utils.book_append_sheet(wb, wr, "Resumen");
+    XLSX.writeFile(wb, `${cfg.archivo}-${new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" })}.xlsx`);
+  }
+
+  function montar(cfg) {
+    const sec = document.querySelector(cfg.sec); if (!sec) return;
+    const pdfBtn = [...sec.querySelectorAll("button")].find(b => b.textContent.trim() === "Descargar PDF");
+    if (!pdfBtn) return; // el bloque de filtros y PDF debe ir antes de este
+    const b = document.createElement("button");
+    b.className = "btn sec sm"; b.textContent = "Descargar Excel"; b.onclick = () => excel(cfg);
+    if (cfg.stock) pdfBtn.after(b);
+    else { const w = document.createElement("div"); w.style.cssText = "display:flex;gap:8px;flex-wrap:wrap"; pdfBtn.replaceWith(w); w.append(pdfBtn, b); }
+  }
+
+  montar({ sec: "#t-stock", stock: true, tbody: "stock-body", titulo: "Inventario de almacén", archivo: "inventario", sumas: ["Kg"], ids: [["Búsqueda", "busca"]] });
+  montar({ sec: "#h-salidas", tbody: "h-body", titulo: "Historial de salidas", archivo: "salidas", sumas: ["Bolsas", "Kg"], ids: [["Destino", "h-area"], ["Desde", "h-desde"], ["Hasta", "h-hasta"]] });
+  montar({ sec: "#h-entradas", tbody: "he-body", titulo: "Historial de entradas", archivo: "entradas", sumas: ["Bolsas", "Kg"], ids: [["Tipo", "he-tipo"], ["Desde", "he-desde"], ["Hasta", "he-hasta"]] });
+  montar({ sec: "#t-produccion", tbody: "p-body", titulo: "Planilla de producción", archivo: "produccion", sumas: ["Bolsas", "Kg", "Merma (kg)"], ids: [["Desde", "p-desde"], ["Hasta", "p-hasta"], ["Área", "pf-area"], ["Grado", "pf-etapa"]] });
+})();
+</script>
 </body>
 </html>
