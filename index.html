@@ -606,14 +606,16 @@ $("tabs").onclick = e => {
 $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
 </script>
 
-<!-- ===== LOTES DE PRODUCCIÓN (tarjetas por lote). Es una pestaña NUEVA: pegar al final, antes de </body>, sin borrar nada ===== -->
+<!-- ===== LOTES DE PRODUCCIÓN v2 (receta por selección, vista plana/tarjetas, PDF).
+     REEMPLAZA solo el bloque de Lotes anterior. Va al final, antes de </body>. No toca Producción. ===== -->
 <script>
 (() => {
   const PREFIJO = "CE0";   // prefijo del lote
-  const MERMA_MAX = 5;     // % de merma a partir del cual la tarjeta se marca en rojo
+  const MERMA_MAX = 5;     // % de merma desde el cual se marca en rojo
+  const FIL = { todos: "Todos", abierto: "Abiertos", cerrado: "Cerrados", alta: "Merma alta" };
   const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
   const fl = () => { const [y, m, d] = hoy().split("-"); return m + d + y.slice(2); };
-  let juan = false, uid = null, canal = null, prods = [], L = [], MP = [], SA = [], abiertos = new Set(), q = "", filtro = "todos", pend = false;
+  let juan = false, uid = null, canal = null, prods = [], L = [], MP = [], SA = [], abiertos = new Set(), q = "", filtro = "todos", plano = false, pend = false;
 
   const st = document.createElement("style");
   st.textContent = `
@@ -622,20 +624,19 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     .pr-chips{display:flex;gap:8px;margin:10px 0 14px;flex-wrap:wrap}
     .pr-chips button{min-height:38px;padding:0 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--mut);font-weight:600;font-size:13.5px}
     .pr-chips button.on{background:var(--ac);color:var(--onac);border-color:var(--ac)}
+    .pr-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 0}
+    .pr-bar .seg{margin:0}
     .pr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
     .pr-c{background:var(--card);border:1px solid var(--line);border-radius:12px;min-width:0;overflow:hidden}
     .pr-c.alta{border-color:var(--redline)}
-    .pr-h{padding:14px 16px;cursor:pointer}
-    .pr-h:hover{background:var(--soft)}
+    .pr-h{padding:14px 16px;cursor:pointer}.pr-h:hover{background:var(--soft)}
     .pr-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-    .pr-top b{display:block;font-size:16px}
-    .pr-top small{color:var(--mut);font-size:12.5px}
+    .pr-top b{display:block;font-size:16px}.pr-top small{color:var(--mut);font-size:12.5px}
     .pr-k{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
     .pr-k div{background:var(--soft);border-radius:8px;padding:8px 10px}
     .pr-k span{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
     .pr-k b{font-size:17px;font-variant-numeric:tabular-nums}
-    .pr-k .m.alta{background:var(--redbg)}.pr-k .m.alta b{color:var(--red)}
-    .pr-k .m.ok b{color:var(--ok)}
+    .pr-k .m.alta{background:var(--redbg)}.pr-k .m.alta b{color:var(--red)}.pr-k .m.ok b{color:var(--ok)}
     .pr-d{border-top:1px solid var(--line);padding:6px 16px 16px;background:var(--soft)}
     .pr-s{margin-top:14px;font-size:13.5px}
     .pr-s>b{display:block;margin-bottom:6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
@@ -644,6 +645,10 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     .pr-t th{background:transparent}
     .pr-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:10px;align-items:end}
     .pr-f input,.pr-f select{min-height:40px;font-size:14px}
+    .pr-f input[readonly]{background:var(--soft);color:var(--mut)}
+    .pr-fr{grid-template-columns:repeat(2,minmax(0,1fr))}.pr-fr select,.pr-fr .btn{grid-column:1/-1}
+    .pr-bal{margin-top:14px;padding:10px 12px;border-radius:8px;font-size:14px;font-weight:600;background:var(--okbg);color:var(--ok)}
+    .pr-bal.alta{background:var(--redbg);color:var(--red)}
     .pr-acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
     @media(max-width:1000px){.pr-res{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:860px){.pr-grid{grid-template-columns:1fr}}`;
@@ -658,14 +663,13 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     <div class="page-head">
       <div class="eyebrow">Control</div>
       <h2>Lotes de producción</h2>
-      <p class="sub">Cada lote es una tarjeta: registras la materia prima que entra, el producto final que sale, y la merma se calcula sola. No modifica el stock.</p>
+      <p class="sub">Cada lote es una tarjeta: armas la receta con la materia prima que entra, registras el producto final que sale, y la merma se calcula sola. No modifica el stock.</p>
     </div>
     <div id="pr-form" class="card pad" style="margin-bottom:18px">
       <div class="grid">
         <div class="full"><label>Producto final que se va a obtener</label><select id="pr-prod"></select></div>
         <div><label>Lote (se arma solo, puedes editarlo)</label><input id="pr-lote"></div>
         <div><label>Observación (opcional)</label><input id="pr-obs" placeholder="Turno, detalle, etc."></div>
-        <div class="full"><label>Receta (opcional)</label><input id="pr-rec" placeholder="Ej. 60% A + 30% B + 10% C"></div>
       </div>
       <div class="form-actions"><button class="btn" id="pr-crear">Crear tarjeta de lote</button></div>
       <div id="pr-msg" class="msg"></div>
@@ -673,7 +677,14 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     <div class="pr-res" id="pr-res"></div>
     <input id="pr-q" placeholder="Buscar por lote o producto">
     <div class="pr-chips" id="pr-chips"><button data-f="todos" class="on">Todos</button><button data-f="abierto">Abiertos</button><button data-f="cerrado">Cerrados</button><button data-f="alta">Merma alta</button></div>
+    <div class="pr-bar" style="margin-bottom:14px">
+      <div class="seg" id="pr-vista"><button data-v="tarjetas" class="on">Tarjetas</button><button data-v="plano">Plano</button></div>
+      <button class="btn sm" id="pr-pdf">Descargar PDF</button>
+    </div>
     <div class="pr-grid" id="pr-lista"></div>
+    <div class="card flush hide" id="pr-plano"><div class="wrap"><table>
+      <thead><tr><th>Fecha y hora</th><th>Lote</th><th>Producto final</th><th class="n">Entró (kg)</th><th class="n">Salió (kg)</th><th class="n">Merma (kg)</th><th class="n">Merma %</th><th>Estado</th></tr></thead>
+      <tbody id="pr-pbody"></tbody></table></div></div>
   </section>`);
 
   const pn = c => prods.find(p => p.codigo === c)?.nombre || c || "—";
@@ -684,6 +695,12 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     const m = e - s, p = e > 0 ? m / e * 100 : 0;
     return { e, s, m, p, alta: e > 0 && (p > MERMA_MAX || m < 0) };
   };
+  const txtMerma = c => c.e > 0 ? `${num(Math.abs(c.m))} kg · ${num(Math.abs(c.p), 1)}%` : "—";
+  const visibles = () => {
+    const t = q.trim().toLowerCase();
+    return L.filter(l => (!t || l.lote.toLowerCase().includes(t) || pn(l.producto_codigo).toLowerCase().includes(t)) &&
+      (filtro === "todos" || (filtro === "alta" ? calc(l.id).alta : l.estado === filtro)));
+  };
 
   const tarjeta = l => {
     const c = calc(l.id), open = abiertos.has(l.id), cer = l.estado === "cerrado", ed = juan && !cer;
@@ -691,16 +708,15 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     const mcls = c.e === 0 ? "" : c.alta ? "alta" : "ok";
     let h = `<div class="pr-c ${c.alta ? "alta" : ""}" data-id="${l.id}">
       <div class="pr-h" data-open="1"><div class="pr-top"><div><b>${esc(l.lote)}</b><small>${esc(pn(l.producto_codigo))} · ${fh(l.fecha_hora)}</small></div><span class="tag ${cer ? "" : "o"}" style="${cer ? "background:var(--soft);color:var(--mut);border-color:var(--line)" : ""}">${cer ? "Cerrado" : "Abierto"}</span></div>
-      <div class="pr-k"><div><span>Entró</span><b>${num(c.e)} kg</b></div><div><span>Salió</span><b>${num(c.s)} kg</b></div><div class="m ${mcls}"><span>${c.m < 0 ? "Sobran" : "Merma"}</span><b>${num(Math.abs(c.m))} kg${c.e > 0 ? " · " + num(Math.abs(c.p), 1) + "%" : ""}</b></div></div></div>`;
+      <div class="pr-k"><div><span>Entró</span><b>${num(c.e)} kg</b></div><div><span>Salió</span><b>${num(c.s)} kg</b></div><div class="m ${mcls}"><span>${c.m < 0 ? "Sobran" : "Merma"}</span><b>${txtMerma(c)}</b></div></div></div>`;
     if (open) {
       h += `<div class="pr-d">
-        ${l.receta ? `<div class="pr-s"><b>Receta</b>${esc(l.receta)}</div>` : ""}
         ${l.observacion ? `<div class="pr-s"><b>Observación</b>${esc(l.observacion)}</div>` : ""}
-        <div class="pr-s"><b>Materia prima entregada</b>
-          <table class="pr-t"><thead><tr><th>Producto</th><th class="n">Receta (kg)</th><th class="n">Entregado (kg)</th><th></th></tr></thead><tbody>
-          ${mps.length ? mps.map(x => `<tr><td>${esc(pn(x.producto_codigo))}</td><td class="n">${x.kg_receta != null ? num(x.kg_receta) : "—"}</td><td class="n">${num(x.kg)}</td><td>${ed ? `<button class="btn sec sm" data-a="delmp" data-x="${x.id}">×</button>` : ""}</td></tr>`).join("") : '<tr><td colspan="4" class="vacio" style="padding:14px">Aún no se entregó materia prima.</td></tr>'}
+        <div class="pr-s"><b>Receta · materia prima</b>
+          <table class="pr-t"><thead><tr><th>Código</th><th>Producto</th><th class="n">Kg</th><th></th></tr></thead><tbody>
+          ${mps.length ? mps.map(x => `<tr><td>${esc(x.producto_codigo)}</td><td>${esc(pn(x.producto_codigo))}</td><td class="n">${num(x.kg)}</td><td>${ed ? `<button class="btn sec sm" data-a="delmp" data-x="${x.id}">×</button>` : ""}</td></tr>`).join("") + `<tr><td colspan="2"><b>Total receta</b></td><td class="n"><b>${num(c.e)}</b></td><td></td></tr>` : '<tr><td colspan="4" class="vacio" style="padding:14px">La receta está vacía. Añade el primer producto.</td></tr>'}
           </tbody></table>
-          ${ed ? `<div class="pr-f"><select class="mp-p">${prods.map(p => opt(p)).join("")}</select><input class="mp-r" type="number" inputmode="decimal" step="any" min="0" placeholder="Kg receta (opc.)"><input class="mp-k" type="number" inputmode="decimal" step="any" min="0" placeholder="Kg entregados"><button class="btn sm" data-a="addmp">Agregar</button></div>` : ""}
+          ${ed ? `<div class="pr-f pr-fr"><select class="mp-p">${prods.map(p => opt(p)).join("")}</select><input class="mp-c" readonly placeholder="Código" value="${esc(prods[0]?.codigo || "")}"><input class="mp-k" type="number" inputmode="decimal" step="any" min="0" placeholder="Cantidad (kg)"><button class="btn sm" data-a="addmp">+ Añadir producto</button></div>` : ""}
         </div>
         <div class="pr-s"><b>Producto final obtenido</b>
           <table class="pr-t"><thead><tr><th>Producto</th><th class="n">Bolsas</th><th class="n">Kg</th><th></th></tr></thead><tbody>
@@ -708,22 +724,24 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
           </tbody></table>
           ${ed ? `<div class="pr-f"><select class="sa-p">${prods.map(p => opt(p, l.producto_codigo)).join("")}</select><input class="sa-b" type="number" inputmode="numeric" step="1" min="1" placeholder="Bolsas"><input class="sa-kb" type="number" inputmode="decimal" step="any" min="0" placeholder="Kg por bolsa"><input class="sa-k" type="number" inputmode="decimal" step="any" min="0" placeholder="o Kg totales"><button class="btn sm" data-a="addsal">Agregar</button></div>` : ""}
         </div>
-        ${juan ? `<div class="pr-acc">${cer ? '<button class="btn sec sm" data-a="abrir">Reabrir lote</button>' : '<button class="btn sm" data-a="cerrar">Cerrar lote</button>'}<button class="btn sec sm" data-a="dellote">Eliminar lote</button></div>` : ""}
+        ${c.e > 0 ? `<div class="pr-bal ${c.alta ? "alta" : ""}">Receta ${num(c.e)} kg − producto final ${num(c.s)} kg = ${c.m < 0 ? "sobran" : "merma"} ${txtMerma(c)}</div>` : ""}
+        <div class="pr-acc"><button class="btn sec sm" data-a="pdf1">PDF de este lote</button>${juan ? (cer ? '<button class="btn sec sm" data-a="abrir">Reabrir lote</button>' : '<button class="btn sm" data-a="cerrar">Cerrar lote</button>') + '<button class="btn sec sm" data-a="dellote">Eliminar lote</button>' : ""}</div>
       </div>`;
     }
     return h + "</div>";
   };
 
   const pintar = () => {
-    const t = q.trim().toLowerCase();
-    const vis = L.filter(l => (!t || l.lote.toLowerCase().includes(t) || pn(l.producto_codigo).toLowerCase().includes(t)) &&
-      (filtro === "todos" || (filtro === "alta" ? calc(l.id).alta : l.estado === filtro)));
-    const ids = new Set(vis.map(l => l.id));
+    const vis = visibles(), ids = new Set(vis.map(l => l.id));
     const E = MP.filter(x => ids.has(x.lote_id)).reduce((s, x) => s + Number(x.kg), 0);
     const S = SA.filter(x => ids.has(x.lote_id)).reduce((s, x) => s + Number(x.kg), 0);
-    $("pr-res").innerHTML = [["Lotes", vis.length, "en la lista"], ["Kg que entraron", num(E), "materia prima"], ["Kg que salieron", num(S), "producto final"], ["Merma total", E > 0 ? num((E - S) / E * 100, 1) + "%" : "—", num(E - S) + " kg"]]
+    $("pr-res").innerHTML = [["Lotes", vis.length, "en la lista"], ["Kg que entraron", num(E), "según recetas"], ["Kg que salieron", num(S), "producto final"], ["Merma total", E > 0 ? num((E - S) / E * 100, 1) + "%" : "—", num(E - S) + " kg"]]
       .map(([a, b, c]) => `<div class="stat"><span class="lbl">${a}</span><b>${b}</b><small>${c}</small></div>`).join("");
-    $("pr-lista").innerHTML = vis.length ? vis.map(tarjeta).join("") : '<div class="vacio">No hay lotes con ese filtro.</div>';
+    $("pr-lista").classList.toggle("hide", plano); $("pr-plano").classList.toggle("hide", !plano);
+    if (plano) {
+      $("pr-pbody").innerHTML = vis.length ? vis.map(l => { const c = calc(l.id); return `<tr${c.alta ? ' class="bajo"' : ""}><td>${fh(l.fecha_hora)}</td><td>${esc(l.lote)}</td><td>${esc(pn(l.producto_codigo))}</td><td class="n">${num(c.e)}</td><td class="n">${num(c.s)}</td><td class="n">${num(c.m)}</td><td class="n">${c.e > 0 ? num(c.p, 1) + "%" : "—"}</td><td>${l.estado === "cerrado" ? "Cerrado" : "Abierto"}</td></tr>`; }).join("")
+        : '<tr><td colspan="8" class="vacio">No hay lotes con ese filtro.</td></tr>';
+    } else $("pr-lista").innerHTML = vis.length ? vis.map(tarjeta).join("") : '<div class="vacio">No hay lotes con ese filtro.</div>';
   };
 
   const cargar = async () => {
@@ -739,6 +757,7 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     L = l.data || []; MP = m.data || []; SA = s.data || []; pintar();
   };
   $("pr-lista").addEventListener("focusout", () => { if (pend) setTimeout(cargar, 300); });
+  $("pr-lista").addEventListener("change", e => { if (e.target.matches(".mp-p")) e.target.closest(".pr-f").querySelector(".mp-c").value = e.target.value; });
 
   const iniciar = async s => {
     if (!s) { uid = null; if (canal) { db.removeChannel(canal); canal = null; } return; }
@@ -758,16 +777,69 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   db.auth.onAuthStateChange((_e, s) => { setTimeout(() => iniciar(s), 0); });
 
   $("pr-crear").onclick = async () => {
-    const f = { producto_codigo: $("pr-prod").value, lote: $("pr-lote").value.trim(), receta: $("pr-rec").value.trim() || null, observacion: $("pr-obs").value.trim() || null };
+    const f = { producto_codigo: $("pr-prod").value, lote: $("pr-lote").value.trim(), observacion: $("pr-obs").value.trim() || null };
     if (!f.lote) return aviso("pr-msg", "Escribe el código del lote.", false);
     const { data, error } = await db.from("prod_lotes").insert(f).select();
     if (error) return aviso("pr-msg", error.code === "23505" ? "Ya existe un lote con ese código. Agrégale una letra al final (ej. " + f.lote + "-B)." : "No se guardó: " + error.message, false);
-    aviso("pr-msg", `Lote ${f.lote} creado. Ábrelo para registrar materia prima y producto final.`, true);
-    $("pr-rec").value = ""; $("pr-obs").value = ""; $("pr-lote").value = PREFIJO + fl();
+    aviso("pr-msg", `Lote ${f.lote} creado. Ábrelo para armar la receta y registrar el producto final.`, true);
+    $("pr-obs").value = ""; $("pr-lote").value = PREFIJO + fl();
     if (data?.[0]) abiertos.add(data[0].id);
     cargar();
   };
 
+  /* ---------- PDF ---------- */
+  const EST = { theme: "grid", styles: { fontSize: 8.5, cellPadding: 4, lineColor: [215, 220, 225], lineWidth: .4, textColor: 30 }, headStyles: { fillColor: [14, 90, 107], textColor: 255, fontStyle: "bold" }, footStyles: { fillColor: [240, 243, 246], textColor: 30, fontStyle: "bold" }, margin: { left: 40, right: 40 } };
+  const nuevoDoc = (orient, titulo) => {
+    const doc = new window.jspdf.jsPDF({ unit: "pt", format: "a4", orientation: orient });
+    const ahora = new Date().toLocaleString("es-BO", { timeZone: "America/La_Paz", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.setTextColor(20); doc.text(titulo, 40, 46);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(90);
+    doc.text(`Generado: ${ahora} (hora de Bolivia)   |   Filtro: ${FIL[filtro]}${q.trim() ? "   |   Búsqueda: " + q.trim() : ""}`, 40, 64);
+    return doc;
+  };
+  const dia = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+  const pdfPlano = () => {
+    const vis = visibles(); if (!vis.length) return alert("No hay lotes para descargar con los filtros actuales.");
+    const doc = nuevoDoc("landscape", "Lotes de producción · Vista plana");
+    let E = 0, S = 0;
+    const body = vis.map(l => { const c = calc(l.id); E += c.e; S += c.s; return [fh(l.fecha_hora), l.lote, pn(l.producto_codigo), num(c.e), num(c.s), num(c.m), c.e > 0 ? num(c.p, 1) + "%" : "—", l.estado === "cerrado" ? "Cerrado" : "Abierto"]; });
+    const der = [3, 4, 5, 6];
+    doc.autoTable({ ...EST, startY: 80, head: [["Fecha y hora", "Lote", "Producto final", "Entró (kg)", "Salió (kg)", "Merma (kg)", "Merma %", "Estado"]], body,
+      foot: [["", "", "Total", num(E), num(S), num(E - S), E > 0 ? num((E - S) / E * 100, 1) + "%" : "—", ""]],
+      didParseCell: d => {
+        if (der.includes(d.column.index)) d.cell.styles.halign = "right";
+        if (d.section === "body" && calc(vis[d.row.index].id).alta) { d.cell.styles.fillColor = [253, 232, 229]; if (d.column.index >= 5 && d.column.index <= 6) { d.cell.styles.textColor = [180, 35, 24]; d.cell.styles.fontStyle = "bold"; } }
+      } });
+    doc.save(`lotes-plano-${dia()}.pdf`);
+  };
+  const detalle = (doc, l, y) => {
+    const c = calc(l.id); if (y > 640) { doc.addPage(); y = 50; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(20); doc.text(`Lote ${l.lote} · ${pn(l.producto_codigo)}`, 40, y);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(90);
+    doc.text(`${fh(l.fecha_hora)} · ${l.estado === "cerrado" ? "Cerrado" : "Abierto"}${l.observacion ? " · " + l.observacion : ""}`, 40, y + 13);
+    y += 22;
+    const tabla = (head, body, foot, der) => {
+      doc.autoTable({ ...EST, startY: y, head: [head], body, foot: [foot], columnStyles: Object.fromEntries(der.map(i => [i, { halign: "right" }])),
+        didParseCell: d => { if (d.section !== "body" && der.includes(d.column.index)) d.cell.styles.halign = "right"; } });
+      y = doc.lastAutoTable.finalY + 12;
+    };
+    const mps = MP.filter(x => x.lote_id === l.id), sas = SA.filter(x => x.lote_id === l.id);
+    tabla(["Código", "Receta · producto", "Kg"], mps.length ? mps.map(x => [x.producto_codigo, pn(x.producto_codigo), num(x.kg)]) : [["", "Sin materia prima", ""]], ["", "Total receta", num(c.e)], [2]);
+    tabla(["Producto final", "Bolsas", "Kg"], sas.length ? sas.map(x => [pn(x.producto_codigo), x.bolsas ? num(x.bolsas, 0) + " × " + num(x.kg_por_bolsa, 3) : "—", num(x.kg)]) : [["Sin producto final", "", ""]], ["Total salió", "", num(c.s)], [1, 2]);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.setTextColor(...(c.alta ? [180, 35, 24] : [6, 118, 71]));
+    doc.text(c.e > 0 ? `${c.m < 0 ? "Sobran" : "Merma"}: ${txtMerma(c)}` : "Merma: sin receta cargada", 40, y + 4);
+    return y + 32;
+  };
+  const pdfTarjetas = lista => {
+    if (!lista.length) return alert("No hay lotes para descargar con los filtros actuales.");
+    const doc = nuevoDoc("portrait", lista.length === 1 ? "Informe de lote " + lista[0].lote : "Lotes de producción · Informe por lote");
+    let y = 90; lista.forEach(l => { y = detalle(doc, l, y); });
+    doc.save(lista.length === 1 ? `lote-${lista[0].lote}-${dia()}.pdf` : `lotes-informe-${dia()}.pdf`);
+  };
+  const conPdf = f => { if (!window.jspdf) return alert("No se pudo cargar el generador de PDF. Revisa tu conexión y recarga la página."); f(); };
+  $("pr-pdf").onclick = () => conPdf(() => plano ? pdfPlano() : pdfTarjetas(visibles()));
+
+  /* ---------- Acciones ---------- */
   const redondea = n => Math.round(n * 1000) / 1000;
   $("pr-lista").addEventListener("click", async e => {
     const card = e.target.closest(".pr-c"); if (!card) return;
@@ -775,10 +847,10 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     const a = e.target.closest("[data-a]")?.dataset.a;
     if (!a) { if (e.target.closest("[data-open]")) { abiertos.has(id) ? abiertos.delete(id) : abiertos.add(id); pintar(); } return; }
     const fin = r => { if (r.error) return alert("No se pudo: " + r.error.message); cargar(); };
+    if (a === "pdf1") return conPdf(() => pdfTarjetas([L.find(x => x.id === id)]));
     if (a === "addmp") {
-      const kg = Number(v(".mp-k")); if (!(kg > 0)) return alert("Escribe los kg entregados.");
-      const rec = v(".mp-r");
-      return fin(await db.from("prod_mp").insert({ lote_id: id, producto_codigo: v(".mp-p"), kg_receta: rec ? Number(rec) : null, kg }));
+      const kg = Number(v(".mp-k")); if (!(kg > 0)) return alert("Escribe la cantidad en kg.");
+      return fin(await db.from("prod_mp").insert({ lote_id: id, producto_codigo: v(".mp-p"), kg }));
     }
     if (a === "addsal") {
       const b = parseInt(v(".sa-b"), 10) || 0, kb = Number(v(".sa-kb")) || 0, kt = Number(v(".sa-k")) || 0;
@@ -792,13 +864,14 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
     }
     if (a === "cerrar" || a === "abrir") return fin(await db.from("prod_lotes").update({ estado: a === "cerrar" ? "cerrado" : "abierto" }).eq("id", id));
     if (a === "dellote") {
-      if (!confirm("¿Eliminar este lote con toda su materia prima y producto final?")) return;
+      if (!confirm("¿Eliminar este lote con su receta y producto final?")) return;
       abiertos.delete(id); return fin(await db.from("prod_lotes").delete().eq("id", id));
     }
   });
 
   $("pr-q").oninput = e => { q = e.target.value; pintar(); };
   $("pr-chips").onclick = e => { const b = e.target.closest("button"); if (!b) return; filtro = b.dataset.f; document.querySelectorAll("#pr-chips button").forEach(x => x.classList.toggle("on", x === b)); pintar(); };
+  $("pr-vista").onclick = e => { const b = e.target.closest("button"); if (!b) return; plano = b.dataset.v === "plano"; document.querySelectorAll("#pr-vista button").forEach(x => x.classList.toggle("on", x === b)); pintar(); };
   $("tabs").addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
     $("t-lotes").classList.toggle("hide", b.dataset.t !== "lotes");
