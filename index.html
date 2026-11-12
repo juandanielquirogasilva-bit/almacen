@@ -605,143 +605,199 @@ $("tabs").onclick = e => {
 };
 $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
 </script>
- <!-- ===== SECCIÓN PRODUCCIÓN v2: REEMPLAZA al bloque de Producción anterior. Va justo antes de </body> ===== -->
+<!-- ===== PRODUCCIÓN v3: TARJETAS POR LOTE. REEMPLAZA todo el bloque de Producción anterior ===== -->
 <script>
 (() => {
-  const PREFIJO_LOTE = "CE0"; // si el prefijo real es con la letra O, cámbialo aquí por "CEO"
-  const ETAPAS = {1:"Molido", 2:"Embolsado", 3:"Pesado", 4:"Costurado", 5:"Paletizado", 6:"Terminado"};
-  const hoy = () => new Date().toLocaleDateString("en-CA", {timeZone: "America/La_Paz"});
-  const fechaLote = () => { const [y, m, d] = hoy().split("-"); return m + d + y.slice(2); }; // MMDDAA
-  let uid = null, juan = false, canalP = null, datos = [], loteManual = false;
+  const PREFIJO = "CE0";   // prefijo del lote
+  const MERMA_MAX = 5;     // % de merma a partir del cual la tarjeta se marca en rojo
+  const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+  const fl = () => { const [y, m, d] = hoy().split("-"); return m + d + y.slice(2); };
+  let juan = false, uid = null, canal = null, prods = [], L = [], MP = [], SA = [], abiertos = new Set(), q = "", filtro = "todos", pend = false;
 
   const st = document.createElement("style");
   st.textContent = `
-    .pe{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:18px}
-    .pe .stat{padding:14px 16px}.pe .stat b{font-size:28px}
-    .pg4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
-    .et{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--acbg);color:var(--ac)}
-    .gsel{min-height:34px;width:auto;min-width:150px;padding:4px 30px 4px 10px;font-size:13px}
-    @media(max-width:1000px){.pe{grid-template-columns:repeat(3,minmax(0,1fr))}.pg4{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(max-width:860px){.pe{grid-template-columns:repeat(2,minmax(0,1fr))}.pg4{grid-template-columns:1fr}
-      nav button{padding-left:2px;padding-right:2px;font-size:12px}}`;
+    .pr-res{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+    .pr-res .stat{padding:14px 16px}.pr-res .stat b{font-size:26px}
+    .pr-chips{display:flex;gap:8px;margin:10px 0 14px;flex-wrap:wrap}
+    .pr-chips button{min-height:38px;padding:0 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--mut);font-weight:600;font-size:13.5px}
+    .pr-chips button.on{background:var(--ac);color:var(--onac);border-color:var(--ac)}
+    .pr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
+    .pr-c{background:var(--card);border:1px solid var(--line);border-radius:12px;min-width:0;overflow:hidden}
+    .pr-c.alta{border-color:var(--redline)}
+    .pr-h{padding:14px 16px;cursor:pointer}
+    .pr-h:hover{background:var(--soft)}
+    .pr-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+    .pr-top b{display:block;font-size:16px}
+    .pr-top small{color:var(--mut);font-size:12.5px}
+    .pr-k{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+    .pr-k div{background:var(--soft);border-radius:8px;padding:8px 10px}
+    .pr-k span{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+    .pr-k b{font-size:17px;font-variant-numeric:tabular-nums}
+    .pr-k .m.alta{background:var(--redbg)}.pr-k .m.alta b{color:var(--red)}
+    .pr-k .m.ok b{color:var(--ok)}
+    .pr-d{border-top:1px solid var(--line);padding:6px 16px 16px;background:var(--soft)}
+    .pr-s{margin-top:14px;font-size:13.5px}
+    .pr-s>b{display:block;margin-bottom:6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+    .pr-t th,.pr-t td{padding:7px 6px;white-space:normal;font-size:13.5px}
+    .pr-t th:first-child,.pr-t td:first-child{padding-left:6px}.pr-t th:last-child,.pr-t td:last-child{padding-right:6px}
+    .pr-t th{background:transparent}
+    .pr-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:10px;align-items:end}
+    .pr-f input,.pr-f select{min-height:40px;font-size:14px}
+    .pr-acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+    @media(max-width:1000px){.pr-res{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:860px){.pr-grid{grid-template-columns:1fr}}`;
   document.head.appendChild(st);
 
   const btn = document.createElement("button");
   btn.dataset.t = "produccion"; btn.textContent = "Producción";
   $("tabs").insertBefore(btn, $("tabs").querySelector('[data-t="historial"]'));
 
-  const opEt = Object.entries(ETAPAS).map(([k, v]) => `<option value="${k}">${k} · ${v}</option>`).join("");
   document.querySelector("main").insertAdjacentHTML("beforeend", `
   <section id="t-produccion" class="hide">
     <div class="page-head">
       <div class="eyebrow">Control</div>
-      <h2>Planilla de producción</h2>
-      <p class="sub">Registro diario de lo que se muele y se produce, con su lote y su merma. Es solo de control: no modifica el stock.</p>
+      <h2>Producción por lote</h2>
+      <p class="sub">Cada lote es una tarjeta: registras la materia prima que entra, el producto final que sale, y la merma se calcula sola. No modifica el stock.</p>
     </div>
-    <div id="p-form" class="card pad" style="margin-bottom:18px">
+    <div id="pr-form" class="card pad" style="margin-bottom:18px">
       <div class="grid">
-        <div class="full"><label>Producto</label><select id="p-prod"></select></div>
-        <div><label>Área</label><select id="p-area"></select></div>
-        <div><label>Grado de acabado</label><select id="p-etapa">${opEt}</select></div>
-        <div><label>Bolsas</label><input id="p-bolsas" type="number" inputmode="numeric" step="1" min="1" placeholder="Cantidad"></div>
-        <div><label>Kg por bolsa (opcional)</label><input id="p-kg" type="number" inputmode="decimal" step="any" min="0.001" placeholder="Ej. 25"></div>
-        <div><label>Lote (se arma solo, puedes editarlo)</label><input id="p-lote" placeholder="Se completa con la fecha y los kg"></div>
-        <div><label>Merma (kg)</label><input id="p-merma" type="number" inputmode="decimal" step="any" min="0" value="0"></div>
-        <div class="full"><label>Observación (opcional)</label><input id="p-obs" placeholder="Turno, detalle, etc."></div>
+        <div class="full"><label>Producto final que se va a obtener</label><select id="pr-prod"></select></div>
+        <div><label>Lote (se arma solo, puedes editarlo)</label><input id="pr-lote"></div>
+        <div><label>Observación (opcional)</label><input id="pr-obs" placeholder="Turno, detalle, etc."></div>
+        <div class="full"><label>Receta (opcional)</label><input id="pr-rec" placeholder="Ej. 60% A + 30% B + 10% C"></div>
       </div>
-      <div class="form-actions"><button class="btn" id="p-guardar">Guardar registro</button></div>
-      <div id="p-msg" class="msg"></div>
+      <div class="form-actions"><button class="btn" id="pr-crear">Crear tarjeta de lote</button></div>
+      <div id="pr-msg" class="msg"></div>
     </div>
-    <div class="pe" id="p-res"></div>
-    <div class="card pad" style="margin-bottom:18px"><div class="pg4">
-      <div><label>Desde</label><input id="p-desde" type="date"></div>
-      <div><label>Hasta</label><input id="p-hasta" type="date"></div>
-      <div><label>Área</label><select id="pf-area"><option value="">Todas</option></select></div>
-      <div><label>Grado</label><select id="pf-etapa"><option value="">Todos</option>${opEt}</select></div>
-    </div></div>
-    <div class="card flush"><div class="wrap"><table>
-      <thead><tr><th>Fecha y hora</th><th>Área</th><th>Grado</th><th>Producto</th><th>Lote</th><th class="n">Bolsas</th><th class="n">Kg</th><th class="n">Merma (kg)</th><th>Observación</th><th></th></tr></thead>
-      <tbody id="p-body"></tbody>
-    </table></div></div>
+    <div class="pr-res" id="pr-res"></div>
+    <input id="pr-q" placeholder="Buscar por lote o producto">
+    <div class="pr-chips" id="pr-chips"><button data-f="todos" class="on">Todos</button><button data-f="abierto">Abiertos</button><button data-f="cerrado">Cerrados</button><button data-f="alta">Merma alta</button></div>
+    <div class="pr-grid" id="pr-lista"></div>
   </section>`);
 
-  const armarLote = () => {
-    if (loteManual) return;
-    const t = (parseInt($("p-bolsas").value, 10) || 0) * (Number($("p-kg").value) || 0);
-    $("p-lote").value = PREFIJO_LOTE + fechaLote() + (t > 0 ? "F" + Math.round(t * 100) / 100 : "");
+  const pn = c => prods.find(p => p.codigo === c)?.nombre || c || "—";
+  const opt = (p, sel) => `<option value="${esc(p.codigo)}"${p.codigo === sel ? " selected" : ""}>${esc(p.tipo === "terminado" ? p.nombre : p.codigo + " · " + p.nombre)}</option>`;
+  const calc = id => {
+    const e = MP.filter(x => x.lote_id === id).reduce((s, x) => s + Number(x.kg), 0);
+    const s = SA.filter(x => x.lote_id === id).reduce((a, x) => a + Number(x.kg), 0);
+    const m = e - s, p = e > 0 ? m / e * 100 : 0;
+    return { e, s, m, p, alta: e > 0 && (p > MERMA_MAX || m < 0) };
   };
 
-  const grado = r => juan
-    ? `<select class="gsel" data-g="${r.id}">${Object.entries(ETAPAS).map(([k, v]) => `<option value="${k}"${Number(k) === r.etapa ? " selected" : ""}>${k} · ${v}</option>`).join("")}</select>`
-    : `<span class="et">${r.etapa} · ${ETAPAS[r.etapa]}</span>`;
+  const tarjeta = l => {
+    const c = calc(l.id), open = abiertos.has(l.id), cer = l.estado === "cerrado", ed = juan && !cer;
+    const mps = MP.filter(x => x.lote_id === l.id), sas = SA.filter(x => x.lote_id === l.id);
+    const mcls = c.e === 0 ? "" : c.alta ? "alta" : "ok";
+    let h = `<div class="pr-c ${c.alta ? "alta" : ""}" data-id="${l.id}">
+      <div class="pr-h" data-open="1"><div class="pr-top"><div><b>${esc(l.lote)}</b><small>${esc(pn(l.producto_codigo))} · ${fh(l.fecha_hora)}</small></div><span class="tag ${cer ? "" : "o"}" style="${cer ? "background:var(--soft);color:var(--mut);border-color:var(--line)" : ""}">${cer ? "Cerrado" : "Abierto"}</span></div>
+      <div class="pr-k"><div><span>Entró</span><b>${num(c.e)} kg</b></div><div><span>Salió</span><b>${num(c.s)} kg</b></div><div class="m ${mcls}"><span>${c.m < 0 ? "Sobran" : "Merma"}</span><b>${num(Math.abs(c.m))} kg${c.e > 0 ? " · " + num(Math.abs(c.p), 1) + "%" : ""}</b></div></div></div>`;
+    if (open) {
+      h += `<div class="pr-d">
+        ${l.receta ? `<div class="pr-s"><b>Receta</b>${esc(l.receta)}</div>` : ""}
+        ${l.observacion ? `<div class="pr-s"><b>Observación</b>${esc(l.observacion)}</div>` : ""}
+        <div class="pr-s"><b>Materia prima entregada</b>
+          <table class="pr-t"><thead><tr><th>Producto</th><th class="n">Receta (kg)</th><th class="n">Entregado (kg)</th><th></th></tr></thead><tbody>
+          ${mps.length ? mps.map(x => `<tr><td>${esc(pn(x.producto_codigo))}</td><td class="n">${x.kg_receta != null ? num(x.kg_receta) : "—"}</td><td class="n">${num(x.kg)}</td><td>${ed ? `<button class="btn sec sm" data-a="delmp" data-x="${x.id}">×</button>` : ""}</td></tr>`).join("") : '<tr><td colspan="4" class="vacio" style="padding:14px">Aún no se entregó materia prima.</td></tr>'}
+          </tbody></table>
+          ${ed ? `<div class="pr-f"><select class="mp-p">${prods.map(p => opt(p)).join("")}</select><input class="mp-r" type="number" inputmode="decimal" step="any" min="0" placeholder="Kg receta (opc.)"><input class="mp-k" type="number" inputmode="decimal" step="any" min="0" placeholder="Kg entregados"><button class="btn sm" data-a="addmp">Agregar</button></div>` : ""}
+        </div>
+        <div class="pr-s"><b>Producto final obtenido</b>
+          <table class="pr-t"><thead><tr><th>Producto</th><th class="n">Bolsas</th><th class="n">Kg</th><th></th></tr></thead><tbody>
+          ${sas.length ? sas.map(x => `<tr><td>${esc(pn(x.producto_codigo))}<br><small style="color:var(--mut)">${fh(x.fecha_hora)}</small></td><td class="n">${x.bolsas ? num(x.bolsas, 0) + " × " + num(x.kg_por_bolsa, 3) : "—"}</td><td class="n">${num(x.kg)}</td><td>${ed ? `<button class="btn sec sm" data-a="delsal" data-x="${x.id}">×</button>` : ""}</td></tr>`).join("") : '<tr><td colspan="4" class="vacio" style="padding:14px">Aún no salió producto.</td></tr>'}
+          </tbody></table>
+          ${ed ? `<div class="pr-f"><select class="sa-p">${prods.map(p => opt(p, l.producto_codigo)).join("")}</select><input class="sa-b" type="number" inputmode="numeric" step="1" min="1" placeholder="Bolsas"><input class="sa-kb" type="number" inputmode="decimal" step="any" min="0" placeholder="Kg por bolsa"><input class="sa-k" type="number" inputmode="decimal" step="any" min="0" placeholder="o Kg totales"><button class="btn sm" data-a="addsal">Agregar</button></div>` : ""}
+        </div>
+        ${juan ? `<div class="pr-acc">${cer ? '<button class="btn sec sm" data-a="abrir">Reabrir lote</button>' : '<button class="btn sm" data-a="cerrar">Cerrar lote</button>'}<button class="btn sec sm" data-a="dellote">Eliminar lote</button></div>` : ""}
+      </div>`;
+    }
+    return h + "</div>";
+  };
 
   const pintar = () => {
-    const d = $("p-desde").value, h = $("p-hasta").value, a = $("pf-area").value, e = $("pf-etapa").value;
-    const f = datos.filter(r => (!d || diaBO(r.fecha_hora) >= d) && (!h || diaBO(r.fecha_hora) <= h) && (!a || String(r.area_id) === a) && (!e || String(r.etapa) === e));
-    const tot = {}, mer = {};
-    f.forEach(r => { tot[r.etapa] = (tot[r.etapa] || 0) + r.bolsas; mer[r.etapa] = (mer[r.etapa] || 0) + Number(r.merma_kg || 0); });
-    $("p-res").innerHTML = Object.entries(ETAPAS).map(([k, v]) => `<div class="stat"><span class="lbl">${k} · ${v}</span><b>${num(tot[k] || 0, 0)}</b><small>bolsas · merma ${num(mer[k] || 0)} kg</small></div>`).join("");
-    $("p-body").innerHTML = f.length ? f.map(r => `<tr><td>${fh(r.fecha_hora)}</td><td>${esc(r.areas?.nombre)}</td><td>${grado(r)}</td><td>${esc(r.productos?.nombre)}</td><td>${esc(r.lote)}</td><td class="n">${num(r.bolsas, 0)}</td><td class="n">${r.kg_por_bolsa ? num(r.bolsas * r.kg_por_bolsa) : "—"}</td><td class="n">${num(r.merma_kg || 0)}</td><td>${esc(r.observacion)}</td><td>${juan ? `<button class="btn sec sm" data-del="${r.id}">Quitar</button>` : ""}</td></tr>`).join("")
-      : '<tr><td colspan="10" class="vacio">No hay registros con ese filtro.</td></tr>';
+    const t = q.trim().toLowerCase();
+    const vis = L.filter(l => (!t || l.lote.toLowerCase().includes(t) || pn(l.producto_codigo).toLowerCase().includes(t)) &&
+      (filtro === "todos" || (filtro === "alta" ? calc(l.id).alta : l.estado === filtro)));
+    const ids = new Set(vis.map(l => l.id));
+    const E = MP.filter(x => ids.has(x.lote_id)).reduce((s, x) => s + Number(x.kg), 0);
+    const S = SA.filter(x => ids.has(x.lote_id)).reduce((s, x) => s + Number(x.kg), 0);
+    $("pr-res").innerHTML = [["Lotes", vis.length, "en la lista"], ["Kg que entraron", num(E), "materia prima"], ["Kg que salieron", num(S), "producto final"], ["Merma total", E > 0 ? num((E - S) / E * 100, 1) + "%" : "—", num(E - S) + " kg"]]
+      .map(([a, b, c]) => `<div class="stat"><span class="lbl">${a}</span><b>${b}</b><small>${c}</small></div>`).join("");
+    $("pr-lista").innerHTML = vis.length ? vis.map(tarjeta).join("") : '<div class="vacio">No hay lotes con ese filtro.</div>';
   };
 
-  const cargarP = async () => {
-    const { data, error } = await db.from("produccion")
-      .select("id,fecha_hora,etapa,bolsas,kg_por_bolsa,lote,merma_kg,observacion,area_id,areas(nombre),productos(nombre)")
-      .order("fecha_hora", { ascending: false }).limit(2000);
-    if (error) { $("p-body").innerHTML = `<tr><td colspan="10" class="vacio">No se pudo cargar: ${esc(error.message)}</td></tr>`; return; }
-    datos = data || []; pintar();
+  const cargar = async () => {
+    const a = document.activeElement;
+    if (a && a.closest && a.closest("#pr-lista") && /INPUT|SELECT/.test(a.tagName)) { pend = true; return; }
+    pend = false;
+    const [l, m, s] = await Promise.all([
+      db.from("prod_lotes").select("*").order("fecha_hora", { ascending: false }).limit(1000),
+      db.from("prod_mp").select("*").order("id").limit(5000),
+      db.from("prod_salidas").select("*").order("id").limit(5000)
+    ]);
+    if (l.error || m.error || s.error) { $("pr-lista").innerHTML = `<div class="vacio">No se pudo cargar: ${esc((l.error || m.error || s.error).message)}</div>`; return; }
+    L = l.data || []; MP = m.data || []; SA = s.data || []; pintar();
   };
+  $("pr-lista").addEventListener("focusout", () => { if (pend) setTimeout(cargar, 300); });
 
-  const iniciarP = async s => {
-    if (!s) { uid = null; if (canalP) { db.removeChannel(canalP); canalP = null; } return; }
+  const iniciar = async s => {
+    if (!s) { uid = null; if (canal) { db.removeChannel(canal); canal = null; } return; }
     if (s.user.id === uid) return;
     uid = s.user.id; juan = uid === JUAN_UID;
-    $("p-form").classList.toggle("hide", !juan);
-    const [p, a] = await Promise.all([db.from("productos").select("codigo,nombre,tipo").order("codigo"), db.from("areas").select("*").order("id")]);
-    $("p-prod").innerHTML = (p.data || []).map(x => `<option value="${esc(x.codigo)}">${esc(x.tipo === "terminado" ? x.nombre : x.codigo + " · " + x.nombre)}</option>`).join("");
-    const ar = (a.data || []).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join("");
-    $("p-area").innerHTML = ar; $("pf-area").innerHTML = '<option value="">Todas</option>' + ar;
-    $("p-desde").value = $("p-hasta").value = hoy();
-    armarLote();
-    await cargarP();
-    canalP = db.channel("prod").on("postgres_changes", { event: "*", schema: "public", table: "produccion" }, cargarP).subscribe();
+    $("pr-form").classList.toggle("hide", !juan);
+    const p = await db.from("productos").select("codigo,nombre,tipo").order("codigo");
+    prods = p.data || [];
+    $("pr-prod").innerHTML = prods.map(x => opt(x)).join("");
+    $("pr-lote").value = PREFIJO + fl();
+    await cargar();
+    canal = db.channel("prodlotes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "prod_lotes" }, cargar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "prod_mp" }, cargar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "prod_salidas" }, cargar).subscribe();
   };
-  db.auth.onAuthStateChange((_e, s) => { setTimeout(() => iniciarP(s), 0); });
+  db.auth.onAuthStateChange((_e, s) => { setTimeout(() => iniciar(s), 0); });
 
-  ["p-bolsas", "p-kg"].forEach(id => $(id).oninput = armarLote);
-  $("p-lote").oninput = () => { loteManual = $("p-lote").value.trim() !== ""; if (!loteManual) armarLote(); };
-
-  $("p-guardar").onclick = async () => {
-    const kg = $("p-kg").value;
-    const fila = { producto_codigo: $("p-prod").value, area_id: Number($("p-area").value), etapa: Number($("p-etapa").value), bolsas: parseInt($("p-bolsas").value, 10), kg_por_bolsa: kg ? Number(kg) : null, lote: $("p-lote").value.trim() || null, merma_kg: Number($("p-merma").value || 0), observacion: $("p-obs").value.trim() || null };
-    if (!(fila.bolsas > 0)) return aviso("p-msg", "Escribe cuántas bolsas (mínimo 1).", false);
-    if (fila.kg_por_bolsa !== null && !(fila.kg_por_bolsa > 0)) return aviso("p-msg", "Kg por bolsa debe ser mayor a 0 o dejarse vacío.", false);
-    if (!(fila.merma_kg >= 0)) return aviso("p-msg", "La merma no puede ser negativa.", false);
-    const { error } = await db.from("produccion").insert(fila);
-    if (error) return aviso("p-msg", "No se guardó: " + error.message, false);
-    aviso("p-msg", `Registrado: ${fila.bolsas} bolsas en ${ETAPAS[fila.etapa]}, lote ${fila.lote || "sin lote"}.`, true);
-    $("p-bolsas").value = ""; $("p-obs").value = ""; $("p-merma").value = "0"; loteManual = false; armarLote();
-    cargarP();
+  $("pr-crear").onclick = async () => {
+    const f = { producto_codigo: $("pr-prod").value, lote: $("pr-lote").value.trim(), receta: $("pr-rec").value.trim() || null, observacion: $("pr-obs").value.trim() || null };
+    if (!f.lote) return aviso("pr-msg", "Escribe el código del lote.", false);
+    const { data, error } = await db.from("prod_lotes").insert(f).select();
+    if (error) return aviso("pr-msg", error.code === "23505" ? "Ya existe un lote con ese código. Agrégale una letra al final (ej. " + f.lote + "-B)." : "No se guardó: " + error.message, false);
+    aviso("pr-msg", `Lote ${f.lote} creado. Ábrelo para registrar materia prima y producto final.`, true);
+    $("pr-rec").value = ""; $("pr-obs").value = ""; $("pr-lote").value = PREFIJO + fl();
+    if (data?.[0]) abiertos.add(data[0].id);
+    cargar();
   };
 
-  $("p-body").onchange = async e => {
-    const s = e.target.closest("[data-g]"); if (!s) return;
-    const { data, error } = await db.from("produccion").update({ etapa: Number(s.value) }).eq("id", s.dataset.g).select();
-    if (error || !data?.length) alert(error ? error.message : "No se pudo cambiar el grado.");
-    cargarP();
-  };
+  const redondea = n => Math.round(n * 1000) / 1000;
+  $("pr-lista").addEventListener("click", async e => {
+    const card = e.target.closest(".pr-c"); if (!card) return;
+    const id = Number(card.dataset.id), v = s => card.querySelector(s)?.value;
+    const a = e.target.closest("[data-a]")?.dataset.a;
+    if (!a) { if (e.target.closest("[data-open]")) { abiertos.has(id) ? abiertos.delete(id) : abiertos.add(id); pintar(); } return; }
+    const fin = r => { if (r.error) return alert("No se pudo: " + r.error.message); cargar(); };
+    if (a === "addmp") {
+      const kg = Number(v(".mp-k")); if (!(kg > 0)) return alert("Escribe los kg entregados.");
+      const rec = v(".mp-r");
+      return fin(await db.from("prod_mp").insert({ lote_id: id, producto_codigo: v(".mp-p"), kg_receta: rec ? Number(rec) : null, kg }));
+    }
+    if (a === "addsal") {
+      const b = parseInt(v(".sa-b"), 10) || 0, kb = Number(v(".sa-kb")) || 0, kt = Number(v(".sa-k")) || 0;
+      const kg = redondea(b > 0 && kb > 0 ? b * kb : kt);
+      if (!(kg > 0)) return alert("Escribe bolsas y kg por bolsa, o los kg totales.");
+      return fin(await db.from("prod_salidas").insert({ lote_id: id, producto_codigo: v(".sa-p"), bolsas: b > 0 && kb > 0 ? b : null, kg_por_bolsa: b > 0 && kb > 0 ? kb : null, kg }));
+    }
+    if (a === "delmp" || a === "delsal") {
+      if (!confirm("¿Quitar este registro?")) return;
+      return fin(await db.from(a === "delmp" ? "prod_mp" : "prod_salidas").delete().eq("id", e.target.closest("[data-x]").dataset.x));
+    }
+    if (a === "cerrar" || a === "abrir") return fin(await db.from("prod_lotes").update({ estado: a === "cerrar" ? "cerrado" : "abierto" }).eq("id", id));
+    if (a === "dellote") {
+      if (!confirm("¿Eliminar este lote con toda su materia prima y producto final?")) return;
+      abiertos.delete(id); return fin(await db.from("prod_lotes").delete().eq("id", id));
+    }
+  });
 
-  $("p-body").onclick = async e => {
-    const b = e.target.closest("[data-del]"); if (!b) return;
-    if (!confirm("¿Quitar este registro de producción?")) return;
-    const { data, error } = await db.from("produccion").delete().eq("id", b.dataset.del).select();
-    if (error || !data?.length) return alert("No se pudo quitar el registro.");
-    cargarP();
-  };
-
-  ["p-desde", "p-hasta", "pf-area", "pf-etapa"].forEach(id => $(id).onchange = pintar);
-
+  $("pr-q").oninput = e => { q = e.target.value; pintar(); };
+  $("pr-chips").onclick = e => { const b = e.target.closest("button"); if (!b) return; filtro = b.dataset.f; document.querySelectorAll("#pr-chips button").forEach(x => x.classList.toggle("on", x === b)); pintar(); };
   $("tabs").addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
     $("t-produccion").classList.toggle("hide", b.dataset.t !== "produccion");
