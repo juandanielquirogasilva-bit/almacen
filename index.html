@@ -605,7 +605,8 @@ $("tabs").onclick = e => {
 };
 $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
 </script>
-<!-- ===== PRODUCCIÓN v3: TARJETAS POR LOTE. REEMPLAZA todo el bloque de Producción anterior ===== -->
+
+<!-- ===== LOTES DE PRODUCCIÓN (tarjetas por lote). Es una pestaña NUEVA: pegar al final, antes de </body>, sin borrar nada ===== -->
 <script>
 (() => {
   const PREFIJO = "CE0";   // prefijo del lote
@@ -649,14 +650,14 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   document.head.appendChild(st);
 
   const btn = document.createElement("button");
-  btn.dataset.t = "produccion"; btn.textContent = "Producción";
+  btn.dataset.t = "lotes"; btn.textContent = "Lotes";
   $("tabs").insertBefore(btn, $("tabs").querySelector('[data-t="historial"]'));
 
   document.querySelector("main").insertAdjacentHTML("beforeend", `
-  <section id="t-produccion" class="hide">
+  <section id="t-lotes" class="hide">
     <div class="page-head">
       <div class="eyebrow">Control</div>
-      <h2>Producción por lote</h2>
+      <h2>Lotes de producción</h2>
       <p class="sub">Cada lote es una tarjeta: registras la materia prima que entra, el producto final que sale, y la merma se calcula sola. No modifica el stock.</p>
     </div>
     <div id="pr-form" class="card pad" style="margin-bottom:18px">
@@ -800,7 +801,7 @@ $("lpass").onkeydown = e => { if (e.key === "Enter") entrar(); };
   $("pr-chips").onclick = e => { const b = e.target.closest("button"); if (!b) return; filtro = b.dataset.f; document.querySelectorAll("#pr-chips button").forEach(x => x.classList.toggle("on", x === b)); pintar(); };
   $("tabs").addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
-    $("t-produccion").classList.toggle("hide", b.dataset.t !== "produccion");
+    $("t-lotes").classList.toggle("hide", b.dataset.t !== "lotes");
   });
 })();
 </script>
